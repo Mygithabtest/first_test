@@ -3,43 +3,45 @@ trigger:
   - main
 
 variables:
-  dockerRegistry: 'artifact-m1.shr.oclc.org'
-  dockerRepository: 'your-project/hello-java'
   namespace: 'azuredeploytest'
   helmChartPath: '$(System.DefaultWorkingDirectory)/hello-java-chart'
   releaseName: 'hello-java'
+  javaAppPath: '$(System.DefaultWorkingDirectory)/target'
 
 stages:
   - stage: Build
-    displayName: 'Build and Push Image'
+    displayName: 'Build Java Application'
     jobs:
-      - job: BuildImage
-        displayName: 'Build and Push Docker Image'
+      - job: BuildApp
+        displayName: 'Build Java Application'
         pool:
-          name: 'YourSelfHostedAgentPool'
+          # Replace with your actual agent pool name
+          name: 'Default'
         steps:
           - task: Maven@3
             displayName: 'Build Java Application'
             inputs:
               mavenPomFile: 'pom.xml'
               goals: 'package'
-              options: '-e' # Enable debug output for Maven
+              options: '-e'
               publishJUnitResults: true
               testResultsFiles: '**/surefire-reports/TEST-*.xml'
               javaHomeOption: 'JDKVersion'
               jdkVersionOption: '11'
 
-          - task: Docker@2
-            displayName: 'Build and Push Docker Image'
+          - task: CopyFiles@2
+            displayName: 'Copy JAR to staging directory'
             inputs:
-              containerRegistry: 'YourDockerRegistry'
-              repository: '$(dockerRepository)'
-              command: 'buildAndPush'
-              Dockerfile: 'Dockerfile'
-              buildContext: '$(System.DefaultWorkingDirectory)'
-              tags: |
-                $(Build.BuildId)
-                latest
+              SourceFolder: '$(System.DefaultWorkingDirectory)/target'
+              Contents: '*.jar'
+              TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish JAR Artifact'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+              ArtifactName: 'java-app'
+              publishLocation: 'Container'
 
   - stage: Deploy
     displayName: 'Deploy to Kubernetes'
@@ -48,10 +50,16 @@ stages:
       - job: DeployToK8s
         displayName: 'Deploy to Kubernetes Cluster'
         pool:
-          name: 'YourSelfHostedAgentPool'
-        # Remove any job-level dependencies
-        # dependsOn: [] - Remove this line if it exists
+          # Replace with your actual agent pool name
+          name: 'Default'
         steps:
+          - task: DownloadBuildArtifacts@1
+            inputs:
+              buildType: 'current'
+              downloadType: 'single'
+              artifactName: 'java-app'
+              downloadPath: '$(System.ArtifactsDirectory)'
+
           - task: HelmDeploy@0
             displayName: 'Deploy Helm Chart'
             inputs:
@@ -64,8 +72,8 @@ stages:
               releaseName: '$(releaseName)'
               valueFile: '$(helmChartPath)/values/dev.yaml'
               overrideValues: |
-                image.repository=$(dockerRegistry)/$(dockerRepository)
-                imageTag=$(Build.BuildId)
+                appVersion=$(Build.BuildId)
+                jarFile=$(System.ArtifactsDirectory)/java-app/*.jar
                 ingress.hostname=$(releaseName).$(namespace).dev.oclc.org
                 xlrelease_url=$(Build.BuildUri)
                 technical_lead=$(Build.RequestedFor)
@@ -74,5 +82,5 @@ stages:
 
           - script: |
               echo "Application deployed to: https://$(releaseName).$(namespace).dev.oclc.org"
-              echo "Image tag: $(Build.BuildId)"
+              echo "Build ID: $(Build.BuildId)"
             displayName: 'Print Deployment Info'
