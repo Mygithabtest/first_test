@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hello-java.fullname" . }}
+  labels:
+    {{- include "hello-java.labels" . | nindent 4 }}
+      {{- if .Values.technical_lead }}
+      technical_lead: {{ .Values.technical_lead }}
+      {{- end }}
+      {{- if .Values.xlrelease_url }}
+      xlrelease_url: {{ .Values.xlrelease_url }}
+      {{- end }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "hello-java.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "hello-java.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ default .Values.image.tag .Values.imageTag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

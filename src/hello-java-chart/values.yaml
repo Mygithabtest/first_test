@@ -1,0 +1,40 @@
+# Default configuration values for hello-java
+replicaCount: 1
+
+image:
+  repository: artifact-m1.shr.oclc.org/your-project/hello-java
+  tag: latest
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+ingress:
+  enabled: true
+  className: "nginx"
+  hostname: hello-java.azuredeploytest.dev.oclc.org
+  path: /
+  pathType: Prefix
+  annotations:
+    kubernetes.io/ingress.class: nginx
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# Additional labels
+labels: {}
+
+# Additional metadata
+xlrelease_url: ""
+technical_lead: ""
+imageTag: ""
