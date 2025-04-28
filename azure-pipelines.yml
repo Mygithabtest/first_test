@@ -28,12 +28,9 @@ stages:
               testResultsFiles: '**/surefire-reports/TEST-*.xml'
               javaHomeOption: 'JDKVersion'
               jdkVersionOption: '11'
-              mavenVersionOption: 'Default'
 
-          # If Maven fails, we'll skip the Docker build
           - task: Docker@2
             displayName: 'Build and Push Docker Image'
-            condition: succeeded()
             inputs:
               containerRegistry: 'YourDockerRegistry'
               repository: '$(dockerRepository)'
@@ -44,9 +41,38 @@ stages:
                 $(Build.BuildId)
                 latest
 
-  # The Deploy stage remains the same, but add a condition so it only runs if Build succeeds
   - stage: Deploy
     displayName: 'Deploy to Kubernetes'
     dependsOn: Build
-    condition: succeeded()
-    # ... rest of the deployment stage
+    jobs:
+      - job: DeployToK8s
+        displayName: 'Deploy to Kubernetes Cluster'
+        pool:
+          name: 'YourSelfHostedAgentPool'
+        # Remove any job-level dependencies
+        # dependsOn: [] - Remove this line if it exists
+        steps:
+          - task: HelmDeploy@0
+            displayName: 'Deploy Helm Chart'
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceConnection: 'K8s-AzureDeployTest'
+              namespace: '$(namespace)'
+              command: 'upgrade'
+              chartType: 'FilePath'
+              chartPath: '$(helmChartPath)'
+              releaseName: '$(releaseName)'
+              valueFile: '$(helmChartPath)/values/dev.yaml'
+              overrideValues: |
+                image.repository=$(dockerRegistry)/$(dockerRepository)
+                imageTag=$(Build.BuildId)
+                ingress.hostname=$(releaseName).$(namespace).dev.oclc.org
+                xlrelease_url=$(Build.BuildUri)
+                technical_lead=$(Build.RequestedFor)
+              waitForExecution: true
+              arguments: '--timeout 5m'
+
+          - script: |
+              echo "Application deployed to: https://$(releaseName).$(namespace).dev.oclc.org"
+              echo "Image tag: $(Build.BuildId)"
+            displayName: 'Print Deployment Info'
