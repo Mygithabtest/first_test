@@ -6,7 +6,6 @@ variables:
   namespace: 'azuredeploytest'
   helmChartPath: '$(System.DefaultWorkingDirectory)/hello-java-chart'
   releaseName: 'hello-java'
-  javaAppPath: '$(System.DefaultWorkingDirectory)/target'
 
 stages:
   - stage: Build
@@ -15,21 +14,21 @@ stages:
       - job: BuildApp
         displayName: 'Build Java Application'
         pool:
-          vmImage: 'ubuntu-latest'  # Microsoft-hosted agent with common tools
+          vmImage: 'ubuntu-latest'
         steps:
-          - task: Maven@3
-            displayName: 'Build Java Application'
-            inputs:
-              mavenPomFile: 'pom.xml'
-              goals: 'package'
-              options: '-e'
-              publishJUnitResults: true
-              testResultsFiles: '**/surefire-reports/TEST-*.xml'
-              javaHomeOption: 'JDKVersion'
-              jdkVersionOption: '11'
+          - script: |
+              ls -la
+              echo "Checking if pom.xml exists:"
+              if [ -f "pom.xml" ]; then echo "pom.xml found"; else echo "pom.xml NOT found"; fi
+              echo "Maven version:"
+              mvn --version
+              echo "Starting Maven build with debug:"
+              mvn -X clean package
+            displayName: 'Build with Maven (Debug Mode)'
 
           - task: CopyFiles@2
             displayName: 'Copy JAR to staging directory'
+            condition: succeeded()
             inputs:
               SourceFolder: '$(System.DefaultWorkingDirectory)/target'
               Contents: '*.jar'
@@ -37,6 +36,7 @@ stages:
 
           - task: PublishBuildArtifacts@1
             displayName: 'Publish JAR Artifact'
+            condition: succeeded()
             inputs:
               PathtoPublish: '$(Build.ArtifactStagingDirectory)'
               ArtifactName: 'java-app'
@@ -45,11 +45,12 @@ stages:
   - stage: Deploy
     displayName: 'Deploy to Kubernetes'
     dependsOn: Build
+    condition: succeeded()
     jobs:
       - job: DeployToK8s
         displayName: 'Deploy to Kubernetes Cluster'
         pool:
-          vmImage: 'ubuntu-latest'  # Microsoft-hosted agent
+          vmImage: 'ubuntu-latest'
         steps:
           - task: DownloadBuildArtifacts@1
             inputs:
@@ -57,6 +58,7 @@ stages:
               downloadType: 'single'
               artifactName: 'java-app'
               downloadPath: '$(System.ArtifactsDirectory)'
+            continueOnError: true
 
           - task: HelmDeploy@0
             displayName: 'Deploy Helm Chart'
@@ -70,14 +72,12 @@ stages:
               releaseName: '$(releaseName)'
               valueFile: '$(helmChartPath)/values/dev.yaml'
               overrideValues: |
-                appVersion=$(Build.BuildId)
+                image.repository=nginx
+                image.tag=latest
                 ingress.hostname=$(releaseName).$(namespace).dev.oclc.org
-                xlrelease_url=$(Build.BuildUri)
-                technical_lead=$(Build.RequestedFor)
               waitForExecution: true
               arguments: '--timeout 5m'
 
           - script: |
               echo "Application deployed to: https://$(releaseName).$(namespace).dev.oclc.org"
-              echo "Build ID: $(Build.BuildId)"
             displayName: 'Print Deployment Info'
