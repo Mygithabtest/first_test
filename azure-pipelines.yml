@@ -15,8 +15,7 @@ stages:
       - job: BuildApp
         displayName: 'Build Java Application'
         pool:
-          # Replace with your actual agent pool name
-          name: 'Default'
+          vmImage: 'ubuntu-latest'  # Microsoft-hosted agent with common tools
         steps:
           - task: Maven@3
             displayName: 'Build Java Application'
@@ -50,8 +49,7 @@ stages:
       - job: DeployToK8s
         displayName: 'Deploy to Kubernetes Cluster'
         pool:
-          # Replace with your actual agent pool name
-          name: 'Default'
+          vmImage: 'ubuntu-latest'  # Microsoft-hosted agent
         steps:
           - task: DownloadBuildArtifacts@1
             inputs:
@@ -73,7 +71,6 @@ stages:
               valueFile: '$(helmChartPath)/values/dev.yaml'
               overrideValues: |
                 appVersion=$(Build.BuildId)
-                jarFile=$(System.ArtifactsDirectory)/java-app/*.jar
                 ingress.hostname=$(releaseName).$(namespace).dev.oclc.org
                 xlrelease_url=$(Build.BuildUri)
                 technical_lead=$(Build.RequestedFor)
