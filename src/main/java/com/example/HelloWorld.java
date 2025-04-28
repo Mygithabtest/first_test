@@ -1,15 +1,7 @@
-apiVersion: v1
-kind: Service
-metadata:
-name: {{ include "hello-java.fullname" . }}
-labels:
-        {{- include "hello-java.labels" . | nindent 4 }}
-spec:
-type: {{ .Values.service.type }}
-ports:
-        - port: {{ .Values.service.port }}
-targetPort: {{ .Values.service.targetPort }}
-protocol: TCP
-name: http
-selector:
-        {{- include "hello-java.selectorLabels" . | nindent 4 }}
+package com.example;
+
+public class HelloWorld {
+    public static void main(String[] args) {
+        System.out.println("Hello, Azure Kubernetes World!");
+    }
+}
