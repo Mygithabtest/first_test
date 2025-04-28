@@ -1,12 +1,52 @@
+# azure-pipelines.yml
 trigger:
   - main
 
-pool:
-  vmImage: 'ubuntu-latest'
+variables:
+  dockerRegistry: 'artifact-m1.shr.oclc.org'
+  dockerRepository: 'your-project/hello-java'
+  namespace: 'azuredeploytest'
+  helmChartPath: '$(System.DefaultWorkingDirectory)/hello-java-chart'
+  releaseName: 'hello-java'
 
-steps:
-  - task: Maven@3
-    inputs:
-      mavenPomFile: 'pom.xml'
-      goals: 'compile'
-      options: '-X'
+stages:
+  - stage: Build
+    displayName: 'Build and Push Image'
+    jobs:
+      - job: BuildImage
+        displayName: 'Build and Push Docker Image'
+        pool:
+          name: 'YourSelfHostedAgentPool'
+        steps:
+          - task: Maven@3
+            displayName: 'Build Java Application'
+            inputs:
+              mavenPomFile: 'pom.xml'
+              goals: 'package'
+              options: '-e' # Enable debug output for Maven
+              publishJUnitResults: true
+              testResultsFiles: '**/surefire-reports/TEST-*.xml'
+              javaHomeOption: 'JDKVersion'
+              jdkVersionOption: '11'
+              mavenVersionOption: 'Default'
+
+          # If Maven fails, we'll skip the Docker build
+          - task: Docker@2
+            displayName: 'Build and Push Docker Image'
+            condition: succeeded()
+            inputs:
+              containerRegistry: 'YourDockerRegistry'
+              repository: '$(dockerRepository)'
+              command: 'buildAndPush'
+              Dockerfile: 'Dockerfile'
+              buildContext: '$(System.DefaultWorkingDirectory)'
+              tags: |
+                $(Build.BuildId)
+                latest
+
+  # The Deploy stage remains the same, but add a condition so it only runs if Build succeeds
+  - stage: Deploy
+    displayName: 'Deploy to Kubernetes'
+    dependsOn: Build
+    condition: succeeded()
+    # ... rest of the deployment stage
