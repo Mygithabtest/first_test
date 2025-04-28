@@ -51,33 +51,26 @@ stages:
         displayName: 'Deploy to Kubernetes Cluster'
         pool:
           vmImage: 'ubuntu-latest'
+        variables:
+          - group: KubernetesConfig
         steps:
-          - task: DownloadBuildArtifacts@1
-            inputs:
-              buildType: 'current'
-              downloadType: 'single'
-              artifactName: 'java-app'
-              downloadPath: '$(System.ArtifactsDirectory)'
-            continueOnError: true
-
-          - task: HelmDeploy@0
-            displayName: 'Deploy Helm Chart'
-            inputs:
-              connectionType: 'Kubernetes Service Connection'
-              kubernetesServiceConnection: 'K8s-AzureDeployTest'
-              namespace: '$(namespace)'
-              command: 'upgrade'
-              chartType: 'FilePath'
-              chartPath: '$(helmChartPath)'
-              releaseName: '$(releaseName)'
-              valueFile: '$(helmChartPath)/values/dev.yaml'
-              overrideValues: |
-                image.repository=nginx
-                image.tag=latest
-                ingress.hostname=$(releaseName).$(namespace).dev.oclc.org
-              waitForExecution: true
-              arguments: '--timeout 5m'
-
           - script: |
-              echo "Application deployed to: https://$(releaseName).$(namespace).dev.oclc.org"
-            displayName: 'Print Deployment Info'
+              # Create kubeconfig file from variable group
+              echo "$(kubeconfig)" > kubeconfig.yaml
+              chmod 600 kubeconfig.yaml
+              
+              # Use kubectl and helm with explicit kubeconfig
+              export KUBECONFIG=$(pwd)/kubeconfig.yaml
+              
+              # Test connection
+              kubectl get namespaces
+              
+              # Deploy with Helm
+              helm upgrade --install $(releaseName) $(helmChartPath) \
+                --namespace $(namespace) \
+                --set image.repository=nginx \
+                --set image.tag=latest \
+                --set ingress.hostname=$(releaseName).$(namespace).dev.oclc.org \
+                -f $(helmChartPath)/values/dev.yaml \
+                --wait --timeout 5m
+            displayName: 'Deploy with Helm using kubeconfig from Variable Group'
