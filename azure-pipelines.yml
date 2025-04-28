@@ -55,11 +55,11 @@ stages:
           - group: KubernetesConfig
         steps:
           - script: |
-              # Create kubeconfig file from variable group
-              echo "$(kubeconfig)" > kubeconfig.yaml
+              # Decode base64 kubeconfig
+              echo "$(kubeconfig_base64)" | base64 -d > kubeconfig.yaml
               chmod 600 kubeconfig.yaml
               
-              # Use kubectl and helm with explicit kubeconfig
+              # Use kubeconfig
               export KUBECONFIG=$(pwd)/kubeconfig.yaml
               
               # Test connection
@@ -73,4 +73,4 @@ stages:
                 --set ingress.hostname=$(releaseName).$(namespace).dev.oclc.org \
                 -f $(helmChartPath)/values/dev.yaml \
                 --wait --timeout 5m
-            displayName: 'Deploy with Helm using kubeconfig from Variable Group'
+            displayName: 'Deploy with Helm using decoded kubeconfig'
