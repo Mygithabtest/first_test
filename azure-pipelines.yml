@@ -78,4 +78,3 @@ stages:
           - script: |
               echo "Application deployed to: https://$(releaseName).$(namespace).dev.oclc.org"
             displayName: 'Print Deployment Info'
-
