@@ -1,3 +1,4 @@
+# azure-pipelines.yml
 trigger:
   - main
 
@@ -13,7 +14,7 @@ stages:
       - job: BuildApp
         displayName: 'Build Java Application'
         pool:
-          name: 'DU-PF4HK2CK'  # Updated agent pool name
+          name: 'DU-PF4HK2CK'
         steps:
           - task: Maven@3
             displayName: 'Build Java Application'
@@ -47,7 +48,7 @@ stages:
       - job: DeployToK8s
         displayName: 'Deploy to Kubernetes Cluster'
         pool:
-          name: 'DU-PF4HK2CK'  # Updated agent pool name
+          name: 'DU-PF4HK2CK'
         steps:
           - task: DownloadBuildArtifacts@1
             inputs:
@@ -55,10 +56,6 @@ stages:
               downloadType: 'single'
               artifactName: 'java-app'
               downloadPath: '$(System.ArtifactsDirectory)'
-
-          - script: |
-              curl -k https://rancher-m1.dev.oclc.org/k8s/clusters/c-m-p8n7sgzn/version || echo "K8s API connectivity failed"
-            displayName: 'Test K8s API Connectivity'
 
           - task: HelmDeploy@0
             displayName: 'Deploy Helm Chart'
@@ -81,3 +78,4 @@ stages:
           - script: |
               echo "Application deployed to: https://$(releaseName).$(namespace).dev.oclc.org"
             displayName: 'Print Deployment Info'
+
