@@ -14,7 +14,7 @@ stages:
       - job: BuildApp
         displayName: 'Build Java Application'
         pool:
-          name: 'DU-PF4HK2CK'
+          name: 'Windows'
         steps:
           - task: Maven@3
             displayName: 'Build Java Application'
@@ -48,7 +48,7 @@ stages:
       - job: DeployToK8s
         displayName: 'Deploy to Kubernetes Cluster'
         pool:
-          name: 'DU-PF4HK2CK'
+          name: 'Windows'
         steps:
           - task: DownloadBuildArtifacts@1
             inputs:
@@ -61,7 +61,7 @@ stages:
             displayName: 'Deploy Helm Chart'
             inputs:
               connectionType: 'Kubernetes Service Connection'
-              kubernetesServiceConnection: 'Cluster_Connection'
+              kubernetesServiceConnection: 'Cluster_Connection'  # Correct service connection name
               namespace: '$(namespace)'
               command: 'upgrade'
               chartType: 'FilePath'
@@ -78,3 +78,4 @@ stages:
           - script: |
               echo "Application deployed to: https://$(releaseName).$(namespace).dev.oclc.org"
             displayName: 'Print Deployment Info'
+
