@@ -13,7 +13,7 @@ stages:
       - job: BuildApp
         displayName: 'Build Java Application'
         pool:
-          name: 'windows'  # Updated agent pool name
+          name: 'DU-PF4HK2CK'  # Updated agent pool name
         steps:
           - task: Maven@3
             displayName: 'Build Java Application'
@@ -47,7 +47,7 @@ stages:
       - job: DeployToK8s
         displayName: 'Deploy to Kubernetes Cluster'
         pool:
-          name: 'windows'  # Updated agent pool name
+          name: 'DU-PF4HK2CK'  # Updated agent pool name
         steps:
           - task: DownloadBuildArtifacts@1
             inputs:
