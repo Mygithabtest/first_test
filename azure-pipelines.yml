@@ -6,6 +6,8 @@ variables:
   namespace: 'azuredeploytest'
   helmChartPath: '$(System.DefaultWorkingDirectory)/hello-java-chart'
   releaseName: 'hello-java'
+  M2_HOME: 'C:\Program Files\Apache\apache-maven-3.9.9'
+  MAVEN_HOME: 'C:\Program Files\Apache\apache-maven-3.9.9'
 
 stages:
   - stage: Build
@@ -16,6 +18,28 @@ stages:
         pool:
           name: 'Windows'
         steps:
+          - task: PowerShell@2
+            displayName: 'Setup Maven Environment'
+            inputs:
+              targetType: 'inline'
+              script: |
+                Write-Host "Setting up Maven environment variables"
+                echo "##vso[task.setvariable variable=M2_HOME]C:\Program Files\Apache\apache-maven-3.9.9"
+                echo "##vso[task.setvariable variable=MAVEN_HOME]C:\Program Files\Apache\apache-maven-3.9.9"
+                echo "##vso[task.setvariable variable=PATH]$env:PATH;C:\Program Files\Apache\apache-maven-3.9.9\bin"
+                
+                # Verify Maven is accessible
+                try {
+                    & "C:\Program Files\Apache\apache-maven-3.9.9\bin\mvn.cmd" -version
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Host "Maven is properly configured"
+                    } else {
+                        Write-Host "##vso[task.logissue type=warning]Maven command returned exit code $LASTEXITCODE"
+                    }
+                } catch {
+                    Write-Host "##vso[task.logissue type=warning]Error running Maven: $_"
+                }
+
           - task: Maven@3
             displayName: 'Build Java Application'
             inputs:
@@ -25,6 +49,9 @@ stages:
               testResultsFiles: '**/surefire-reports/TEST-*.xml'
               javaHomeOption: 'JDKVersion'
               jdkVersionOption: '11'
+              mavenVersionOption: 'Path'
+              mavenPath: 'C:\Program Files\Apache\apache-maven-3.9.9'
+              mavenSetM2Home: true
 
           - task: CopyFiles@2
             displayName: 'Copy JAR to staging directory'
@@ -78,4 +105,3 @@ stages:
           - script: |
               echo "Application deployed to: https://$(releaseName).$(namespace).dev.oclc.org"
             displayName: 'Print Deployment Info'
-
