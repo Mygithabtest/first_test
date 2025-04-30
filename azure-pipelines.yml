@@ -23,12 +23,6 @@ stages:
                 @echo Setting up System PATH...
                 set PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\wbem;C:\Program Files\Java\jdk-21.0.7\bin;C:\Program Files\Apache\apache-maven-3.9.9\bin;%PATH%
                 @echo PATH is now: %PATH%
-                @echo Verifying reg command:
-                where reg
-                @echo Verifying Java:
-                java -version
-                @echo Verifying Maven:
-                mvn -version
 
           - task: Maven@3
             displayName: 'Build Java Application'
@@ -91,14 +85,6 @@ stages:
               artifactName: 'java-app'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          - task: Kubernetes@1
-            displayName: 'Verify Kubectl Connection'
-            inputs:
-              connectionType: 'Kubernetes Service Connection'
-              kubernetesServiceEndpoint: 'Cluster_Connection'
-              command: 'get'
-              arguments: 'namespace $(namespace)'
-
           - task: HelmDeploy@0
             displayName: 'Deploy Helm Chart'
             inputs:
@@ -115,7 +101,7 @@ stages:
                 image.tag=latest
                 ingress.hostname=$(releaseName).$(namespace).dev.oclc.org
               waitForExecution: true
-              arguments: '--timeout 5m'
+              arguments: '--timeout 5m --insecure-skip-tls-verify'
 
           - task: CmdLine@2
             displayName: 'Print Deployment Info'
