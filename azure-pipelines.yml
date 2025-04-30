@@ -74,12 +74,30 @@ stages:
                 @echo Setting up System PATH...
                 set PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\wbem;%PATH%
 
+          - task: KubectlInstaller@0
+            displayName: 'Install Kubectl'
+            inputs:
+              kubectlVersion: 'latest'
+
+          - task: HelmInstaller@1
+            displayName: 'Install Helm'
+            inputs:
+              helmVersionToInstall: 'latest'
+
           - task: DownloadBuildArtifacts@1
             inputs:
               buildType: 'current'
               downloadType: 'single'
               artifactName: 'java-app'
               downloadPath: '$(System.ArtifactsDirectory)'
+
+          - task: Kubernetes@1
+            displayName: 'Verify Kubectl Connection'
+            inputs:
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceEndpoint: 'Cluster_Connection'
+              command: 'get'
+              arguments: 'namespace $(namespace)'
 
           - task: HelmDeploy@0
             displayName: 'Deploy Helm Chart'
