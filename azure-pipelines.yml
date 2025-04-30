@@ -6,7 +6,6 @@ variables:
   namespace: 'azuredeploytest'
   helmChartPath: '$(System.DefaultWorkingDirectory)/hello-java-chart'
   releaseName: 'hello-java'
-  powershellPath: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
 
 stages:
   - stage: Build
@@ -18,12 +17,18 @@ stages:
           name: 'Windows'
         steps:
           - task: CmdLine@2
-            displayName: 'Setup PowerShell Path'
+            displayName: 'Fix PATH for System Tools'
             inputs:
               script: |
-                echo "Setting up PowerShell Path..."
-                set PATH=%PATH%;C:\Windows\System32\WindowsPowerShell\v1.0
-                echo %PATH%
+                @echo Setting up System PATH...
+                set PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\wbem;C:\Program Files\Java\jdk-21.0.7\bin;C:\Program Files\Apache\apache-maven-3.9.9\bin;%PATH%
+                @echo PATH is now: %PATH%
+                @echo Verifying reg command:
+                where reg
+                @echo Verifying Java:
+                java -version
+                @echo Verifying Maven:
+                mvn -version
 
           - task: Maven@3
             displayName: 'Build Java Application'
@@ -32,11 +37,11 @@ stages:
               goals: 'package'
               publishJUnitResults: true
               testResultsFiles: '**/surefire-reports/TEST-*.xml'
-              javaHomeOption: 'JDKVersion'
-              jdkVersionOption: '11'
+              javaHomeOption: 'Path'
+              jdkDirectory: 'C:\Program Files\Java\jdk-21.0.7'
               mavenVersionOption: 'Path'
               mavenPath: 'C:\Program Files\Apache\apache-maven-3.9.9'
-              options: '-Dpowershell.path="C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"'
+              mavenSetM2Home: true
 
           - task: CopyFiles@2
             displayName: 'Copy JAR to staging directory'
@@ -63,12 +68,11 @@ stages:
           name: 'Windows'
         steps:
           - task: CmdLine@2
-            displayName: 'Setup PowerShell Path'
+            displayName: 'Fix PATH for System Tools'
             inputs:
               script: |
-                echo "Setting up PowerShell Path..."
-                set PATH=%PATH%;C:\Windows\System32\WindowsPowerShell\v1.0
-                echo %PATH%
+                @echo Setting up System PATH...
+                set PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\wbem;%PATH%
 
           - task: DownloadBuildArtifacts@1
             inputs:
@@ -81,7 +85,7 @@ stages:
             displayName: 'Deploy Helm Chart'
             inputs:
               connectionType: 'Kubernetes Service Connection'
-              kubernetesServiceConnection: 'Cluster_Connection'  # Correct service connection name
+              kubernetesServiceConnection: 'Cluster_Connection'
               namespace: '$(namespace)'
               command: 'upgrade'
               chartType: 'FilePath'
@@ -95,6 +99,8 @@ stages:
               waitForExecution: true
               arguments: '--timeout 5m'
 
-          - script: |
-              "$(powershellPath)" -Command "echo 'Application deployed to: https://$(releaseName).$(namespace).dev.oclc.org'"
+          - task: CmdLine@2
             displayName: 'Print Deployment Info'
+            inputs:
+              script: |
+                @echo Application deployed to: https://$(releaseName).$(namespace).dev.oclc.org
