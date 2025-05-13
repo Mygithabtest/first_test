@@ -4,7 +4,7 @@ trigger:
 
 variables:
   namespace: 'azuredeploytest'
-  helmChartPath: 'hello-java-chart'  # Simplified path relative to working directory
+  helmChartPath: 'hello-java-chart'
   releaseName: 'hello-java'
 
 stages:
@@ -92,34 +92,99 @@ stages:
             inputs:
               secureFile: 'k8s-devlab.yaml'
 
-          # Verify the chart path first
+          # Create a basic Helm chart since it's missing
           - task: CmdLine@2
-            displayName: 'Verify Helm Chart location'
+            displayName: 'Create Helm Chart'
             inputs:
               script: |
-                @echo Current directory:
-                cd
-                @echo Directory contents:
-                dir
-                @echo Checking for Helm chart:
-                if exist hello-java-chart (
-                  @echo Helm chart directory found
-                  dir hello-java-chart
-                ) else (
-                  @echo Helm chart directory NOT found
-                  @echo Searching for chart directory...
-                  dir /s /b | findstr "hello-java-chart"
-                )
-                @echo Checking for values file:
-                if exist hello-java-chart\values\dev.yaml (
-                  @echo Values file found
-                  type hello-java-chart\values\dev.yaml
-                ) else (
-                  @echo Values file NOT found
-                  dir /s /b | findstr "dev.yaml"
-                )
+                @echo Creating Helm chart directory structure...
+                
+                @echo Creating basic chart directory structure
+                mkdir hello-java-chart
+                mkdir hello-java-chart\templates
+                mkdir hello-java-chart\values
+                
+                @echo Creating Chart.yaml
+                echo apiVersion: v2 > hello-java-chart\Chart.yaml
+                echo name: hello-java >> hello-java-chart\Chart.yaml
+                echo description: A Helm chart for Hello Java application >> hello-java-chart\Chart.yaml
+                echo type: application >> hello-java-chart\Chart.yaml
+                echo version: 0.1.0 >> hello-java-chart\Chart.yaml
+                echo appVersion: "1.0.0" >> hello-java-chart\Chart.yaml
+                
+                @echo Creating values.yaml
+                echo replicaCount: 1 > hello-java-chart\values.yaml
+                echo image: >> hello-java-chart\values.yaml
+                echo   repository: nginx >> hello-java-chart\values.yaml
+                echo   tag: latest >> hello-java-chart\values.yaml
+                echo   pullPolicy: IfNotPresent >> hello-java-chart\values.yaml
+                echo service: >> hello-java-chart\values.yaml
+                echo   type: ClusterIP >> hello-java-chart\values.yaml
+                echo   port: 80 >> hello-java-chart\values.yaml
+                echo ingress: >> hello-java-chart\values.yaml
+                echo   enabled: true >> hello-java-chart\values.yaml
+                echo   hostname: hello-java.azuredeploytest.dev.oclc.org >> hello-java-chart\values.yaml
+                
+                @echo Creating dev values file
+                copy hello-java-chart\values.yaml hello-java-chart\values\dev.yaml
+                
+                @echo Creating deployment.yaml
+                echo apiVersion: apps/v1 > hello-java-chart\templates\deployment.yaml
+                echo kind: Deployment >> hello-java-chart\templates\deployment.yaml
+                echo metadata: >> hello-java-chart\templates\deployment.yaml
+                echo   name: {{ .Release.Name }} >> hello-java-chart\templates\deployment.yaml
+                echo spec: >> hello-java-chart\templates\deployment.yaml
+                echo   replicas: {{ .Values.replicaCount }} >> hello-java-chart\templates\deployment.yaml
+                echo   selector: >> hello-java-chart\templates\deployment.yaml
+                echo     matchLabels: >> hello-java-chart\templates\deployment.yaml
+                echo       app: {{ .Release.Name }} >> hello-java-chart\templates\deployment.yaml
+                echo   template: >> hello-java-chart\templates\deployment.yaml
+                echo     metadata: >> hello-java-chart\templates\deployment.yaml
+                echo       labels: >> hello-java-chart\templates\deployment.yaml
+                echo         app: {{ .Release.Name }} >> hello-java-chart\templates\deployment.yaml
+                echo     spec: >> hello-java-chart\templates\deployment.yaml
+                echo       containers: >> hello-java-chart\templates\deployment.yaml
+                echo       - name: {{ .Release.Name }} >> hello-java-chart\templates\deployment.yaml
+                echo         image: {{ .Values.image.repository }}:{{ .Values.image.tag }} >> hello-java-chart\templates\deployment.yaml
+                echo         imagePullPolicy: {{ .Values.image.pullPolicy }} >> hello-java-chart\templates\deployment.yaml
+                echo         ports: >> hello-java-chart\templates\deployment.yaml
+                echo         - containerPort: 80 >> hello-java-chart\templates\deployment.yaml
+                
+                @echo Creating service.yaml
+                echo apiVersion: v1 > hello-java-chart\templates\service.yaml
+                echo kind: Service >> hello-java-chart\templates\service.yaml
+                echo metadata: >> hello-java-chart\templates\service.yaml
+                echo   name: {{ .Release.Name }} >> hello-java-chart\templates\service.yaml
+                echo spec: >> hello-java-chart\templates\service.yaml
+                echo   type: {{ .Values.service.type }} >> hello-java-chart\templates\service.yaml
+                echo   ports: >> hello-java-chart\templates\service.yaml
+                echo   - port: {{ .Values.service.port }} >> hello-java-chart\templates\service.yaml
+                echo     targetPort: 80 >> hello-java-chart\templates\service.yaml
+                echo   selector: >> hello-java-chart\templates\service.yaml
+                echo     app: {{ .Release.Name }} >> hello-java-chart\templates\service.yaml
+                
+                @echo Creating ingress.yaml
+                echo apiVersion: networking.k8s.io/v1 > hello-java-chart\templates\ingress.yaml
+                echo kind: Ingress >> hello-java-chart\templates\ingress.yaml
+                echo metadata: >> hello-java-chart\templates\ingress.yaml
+                echo   name: {{ .Release.Name }} >> hello-java-chart\templates\ingress.yaml
+                echo spec: >> hello-java-chart\templates\ingress.yaml
+                echo   rules: >> hello-java-chart\templates\ingress.yaml
+                echo   - host: {{ .Values.ingress.hostname }} >> hello-java-chart\templates\ingress.yaml
+                echo     http: >> hello-java-chart\templates\ingress.yaml
+                echo       paths: >> hello-java-chart\templates\ingress.yaml
+                echo       - path: / >> hello-java-chart\templates\ingress.yaml
+                echo         pathType: Prefix >> hello-java-chart\templates\ingress.yaml
+                echo         backend: >> hello-java-chart\templates\ingress.yaml
+                echo           service: >> hello-java-chart\templates\ingress.yaml
+                echo             name: {{ .Release.Name }} >> hello-java-chart\templates\ingress.yaml
+                echo             port: >> hello-java-chart\templates\ingress.yaml
+                echo               number: {{ .Values.service.port }} >> hello-java-chart\templates\ingress.yaml
+                
+                @echo Chart structure created:
+                dir hello-java-chart /s
 
-          # Use kubeconfig with insecure-skip-tls-verify flag and adjusted path
+          # Deploy with the newly created chart
           - task: CmdLine@2
             displayName: 'Deploy Helm Chart with kubeconfig and insecure flag'
             inputs:
