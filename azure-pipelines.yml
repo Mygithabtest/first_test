@@ -94,7 +94,7 @@ stages:
 
           # Create a basic Helm chart with security context and resource limits
           - task: CmdLine@2
-            displayName: 'Create Helm Chart with Security Context and Resource Limits'
+            displayName: 'Create Helm Chart for Non-Root Container'
             inputs:
               script: |
                 @echo Creating Helm chart directory structure...
@@ -116,12 +116,13 @@ stages:
                 (
                 echo replicaCount: 1
                 echo image:
-                echo   repository: nginx
+                echo   # Using bitnami/nginx which is designed to run as non-root
+                echo   repository: bitnami/nginx
                 echo   tag: latest
                 echo   pullPolicy: IfNotPresent
                 echo service:
                 echo   type: ClusterIP
-                echo   port: 80
+                echo   port: 8080
                 echo ingress:
                 echo   enabled: true
                 echo   hostname: hello-java.azuredeploytest.dev.oclc.org
@@ -157,6 +158,7 @@ stages:
                 echo     spec:
                 echo       securityContext:
                 echo         runAsNonRoot: true
+                echo         fsGroup: 1001
                 echo       containers:
                 echo       - name: {{ .Release.Name }}
                 echo         image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
@@ -167,11 +169,13 @@ stages:
                 echo             drop:
                 echo             - ALL
                 echo           runAsNonRoot: true
-                echo           runAsUser: 101
+                echo           runAsUser: 1001
                 echo           seccompProfile:
                 echo             type: RuntimeDefault
                 echo         ports:
-                echo         - containerPort: 80
+                echo         - name: http
+                echo           containerPort: 8080
+                echo           protocol: TCP
                 echo         resources:
                 echo           limits:
                 echo             cpu: {{ .Values.resources.limits.cpu }}
@@ -179,6 +183,20 @@ stages:
                 echo           requests:
                 echo             cpu: {{ .Values.resources.requests.cpu }}
                 echo             memory: {{ .Values.resources.requests.memory }}
+                echo         livenessProbe:
+                echo           httpGet:
+                echo             path: /
+                echo             port: http
+                echo           initialDelaySeconds: 30
+                echo           timeoutSeconds: 5
+                echo           failureThreshold: 6
+                echo         readinessProbe:
+                echo           httpGet:
+                echo             path: /
+                echo             port: http
+                echo           initialDelaySeconds: 5
+                echo           timeoutSeconds: 3
+                echo           periodSeconds: 5
                 ) > hello-java-chart\templates\deployment.yaml
                 
                 @echo Creating service.yaml
@@ -191,7 +209,9 @@ stages:
                 echo   type: {{ .Values.service.type }}
                 echo   ports:
                 echo   - port: {{ .Values.service.port }}
-                echo     targetPort: 80
+                echo     targetPort: 8080
+                echo     protocol: TCP
+                echo     name: http
                 echo   selector:
                 echo     app: {{ .Release.Name }}
                 ) > hello-java-chart\templates\service.yaml
@@ -233,7 +253,7 @@ stages:
                 helm upgrade --install $(releaseName) ./$(helmChartPath) ^
                   --namespace $(namespace) ^
                   --values ./$(helmChartPath)/values/dev.yaml ^
-                  --set image.repository=nginx,image.tag=latest,ingress.hostname=$(releaseName).$(namespace).dev.oclc.org ^
+                  --set image.repository=bitnami/nginx,image.tag=latest,ingress.hostname=$(releaseName).$(namespace).dev.oclc.org ^
                   --wait --timeout 5m ^
                   --kubeconfig $(kubeconfig.secureFilePath) ^
                   --insecure-skip-tls-verify
