@@ -92,9 +92,9 @@ stages:
             inputs:
               secureFile: 'k8s-devlab.yaml'
 
-          # Create a basic Helm chart with hardcoded security context
+          # Create a basic Helm chart with security context and resource limits
           - task: CmdLine@2
-            displayName: 'Create Helm Chart with Hardcoded Security Context'
+            displayName: 'Create Helm Chart with Security Context and Resource Limits'
             inputs:
               script: |
                 @echo Creating Helm chart directory structure...
@@ -113,22 +113,31 @@ stages:
                 echo appVersion: "1.0.0" >> hello-java-chart\Chart.yaml
                 
                 @echo Creating values.yaml
-                echo replicaCount: 1 > hello-java-chart\values.yaml
-                echo image: >> hello-java-chart\values.yaml
-                echo   repository: nginx >> hello-java-chart\values.yaml
-                echo   tag: latest >> hello-java-chart\values.yaml
-                echo   pullPolicy: IfNotPresent >> hello-java-chart\values.yaml
-                echo service: >> hello-java-chart\values.yaml
-                echo   type: ClusterIP >> hello-java-chart\values.yaml
-                echo   port: 80 >> hello-java-chart\values.yaml
-                echo ingress: >> hello-java-chart\values.yaml
-                echo   enabled: true >> hello-java-chart\values.yaml
-                echo   hostname: hello-java.azuredeploytest.dev.oclc.org >> hello-java-chart\values.yaml
+                (
+                echo replicaCount: 1
+                echo image:
+                echo   repository: nginx
+                echo   tag: latest
+                echo   pullPolicy: IfNotPresent
+                echo service:
+                echo   type: ClusterIP
+                echo   port: 80
+                echo ingress:
+                echo   enabled: true
+                echo   hostname: hello-java.azuredeploytest.dev.oclc.org
+                echo resources:
+                echo   limits:
+                echo     cpu: 500m
+                echo     memory: 512Mi
+                echo   requests:
+                echo     cpu: 100m
+                echo     memory: 128Mi
+                ) > hello-java-chart\values.yaml
                 
                 @echo Creating dev values file
                 copy hello-java-chart\values.yaml hello-java-chart\values\dev.yaml
                 
-                @echo Creating deployment.yaml with hardcoded security context
+                @echo Creating deployment.yaml with security context and resource limits
                 (
                 echo apiVersion: apps/v1
                 echo kind: Deployment
@@ -163,6 +172,13 @@ stages:
                 echo             type: RuntimeDefault
                 echo         ports:
                 echo         - containerPort: 80
+                echo         resources:
+                echo           limits:
+                echo             cpu: {{ .Values.resources.limits.cpu }}
+                echo             memory: {{ .Values.resources.limits.memory }}
+                echo           requests:
+                echo             cpu: {{ .Values.resources.requests.cpu }}
+                echo             memory: {{ .Values.resources.requests.memory }}
                 ) > hello-java-chart\templates\deployment.yaml
                 
                 @echo Creating service.yaml
@@ -202,6 +218,9 @@ stages:
                 
                 @echo Chart structure created:
                 dir hello-java-chart /s
+                
+                @echo Checking deployment.yaml content:
+                type hello-java-chart\templates\deployment.yaml
 
           # Deploy with the newly created chart
           - task: CmdLine@2
