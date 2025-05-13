@@ -92,9 +92,9 @@ stages:
             inputs:
               secureFile: 'k8s-devlab.yaml'
 
-          # Create a basic Helm chart with security context
+          # Create a basic Helm chart with hardcoded security context
           - task: CmdLine@2
-            displayName: 'Create Helm Chart with Security Context'
+            displayName: 'Create Helm Chart with Hardcoded Security Context'
             inputs:
               script: |
                 @echo Creating Helm chart directory structure...
@@ -124,80 +124,81 @@ stages:
                 echo ingress: >> hello-java-chart\values.yaml
                 echo   enabled: true >> hello-java-chart\values.yaml
                 echo   hostname: hello-java.azuredeploytest.dev.oclc.org >> hello-java-chart\values.yaml
-                echo securityContext: >> hello-java-chart\values.yaml
-                echo   runAsNonRoot: true >> hello-java-chart\values.yaml
-                echo   runAsUser: 1000 >> hello-java-chart\values.yaml
-                echo   allowPrivilegeEscalation: false >> hello-java-chart\values.yaml
-                echo   capabilities: >> hello-java-chart\values.yaml
-                echo     drop: ["ALL"] >> hello-java-chart\values.yaml
-                echo   seccompProfile: >> hello-java-chart\values.yaml
-                echo     type: RuntimeDefault >> hello-java-chart\values.yaml
                 
                 @echo Creating dev values file
                 copy hello-java-chart\values.yaml hello-java-chart\values\dev.yaml
                 
-                @echo Creating deployment.yaml with security context
-                echo apiVersion: apps/v1 > hello-java-chart\templates\deployment.yaml
-                echo kind: Deployment >> hello-java-chart\templates\deployment.yaml
-                echo metadata: >> hello-java-chart\templates\deployment.yaml
-                echo   name: {{ .Release.Name }} >> hello-java-chart\templates\deployment.yaml
-                echo spec: >> hello-java-chart\templates\deployment.yaml
-                echo   replicas: {{ .Values.replicaCount }} >> hello-java-chart\templates\deployment.yaml
-                echo   selector: >> hello-java-chart\templates\deployment.yaml
-                echo     matchLabels: >> hello-java-chart\templates\deployment.yaml
-                echo       app: {{ .Release.Name }} >> hello-java-chart\templates\deployment.yaml
-                echo   template: >> hello-java-chart\templates\deployment.yaml
-                echo     metadata: >> hello-java-chart\templates\deployment.yaml
-                echo       labels: >> hello-java-chart\templates\deployment.yaml
-                echo         app: {{ .Release.Name }} >> hello-java-chart\templates\deployment.yaml
-                echo     spec: >> hello-java-chart\templates\deployment.yaml
-                echo       securityContext: >> hello-java-chart\templates\deployment.yaml
-                echo         runAsNonRoot: true >> hello-java-chart\templates\deployment.yaml
-                echo       containers: >> hello-java-chart\templates\deployment.yaml
-                echo       - name: {{ .Release.Name }} >> hello-java-chart\templates\deployment.yaml
-                echo         image: {{ .Values.image.repository }}:{{ .Values.image.tag }} >> hello-java-chart\templates\deployment.yaml
-                echo         imagePullPolicy: {{ .Values.image.pullPolicy }} >> hello-java-chart\templates\deployment.yaml
-                echo         securityContext: >> hello-java-chart\templates\deployment.yaml
-                echo           allowPrivilegeEscalation: false >> hello-java-chart\templates\deployment.yaml
-                echo           capabilities: >> hello-java-chart\templates\deployment.yaml
-                echo             drop: ["ALL"] >> hello-java-chart\templates\deployment.yaml
-                echo           seccompProfile: >> hello-java-chart\templates\deployment.yaml
-                echo             type: RuntimeDefault >> hello-java-chart\templates\deployment.yaml
-                echo           runAsNonRoot: true >> hello-java-chart\templates\deployment.yaml
-                echo           runAsUser: 1000 >> hello-java-chart\templates\deployment.yaml
-                echo         ports: >> hello-java-chart\templates\deployment.yaml
-                echo         - containerPort: 80 >> hello-java-chart\templates\deployment.yaml
+                @echo Creating deployment.yaml with hardcoded security context
+                (
+                echo apiVersion: apps/v1
+                echo kind: Deployment
+                echo metadata:
+                echo   name: {{ .Release.Name }}
+                echo   labels:
+                echo     app: {{ .Release.Name }}
+                echo spec:
+                echo   replicas: {{ .Values.replicaCount }}
+                echo   selector:
+                echo     matchLabels:
+                echo       app: {{ .Release.Name }}
+                echo   template:
+                echo     metadata:
+                echo       labels:
+                echo         app: {{ .Release.Name }}
+                echo     spec:
+                echo       securityContext:
+                echo         runAsNonRoot: true
+                echo       containers:
+                echo       - name: {{ .Release.Name }}
+                echo         image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+                echo         imagePullPolicy: {{ .Values.image.pullPolicy }}
+                echo         securityContext:
+                echo           allowPrivilegeEscalation: false
+                echo           capabilities:
+                echo             drop:
+                echo             - ALL
+                echo           runAsNonRoot: true
+                echo           runAsUser: 101
+                echo           seccompProfile:
+                echo             type: RuntimeDefault
+                echo         ports:
+                echo         - containerPort: 80
+                ) > hello-java-chart\templates\deployment.yaml
                 
                 @echo Creating service.yaml
-                echo apiVersion: v1 > hello-java-chart\templates\service.yaml
-                echo kind: Service >> hello-java-chart\templates\service.yaml
-                echo metadata: >> hello-java-chart\templates\service.yaml
-                echo   name: {{ .Release.Name }} >> hello-java-chart\templates\service.yaml
-                echo spec: >> hello-java-chart\templates\service.yaml
-                echo   type: {{ .Values.service.type }} >> hello-java-chart\templates\service.yaml
-                echo   ports: >> hello-java-chart\templates\service.yaml
-                echo   - port: {{ .Values.service.port }} >> hello-java-chart\templates\service.yaml
-                echo     targetPort: 80 >> hello-java-chart\templates\service.yaml
-                echo   selector: >> hello-java-chart\templates\service.yaml
-                echo     app: {{ .Release.Name }} >> hello-java-chart\templates\service.yaml
+                (
+                echo apiVersion: v1
+                echo kind: Service
+                echo metadata:
+                echo   name: {{ .Release.Name }}
+                echo spec:
+                echo   type: {{ .Values.service.type }}
+                echo   ports:
+                echo   - port: {{ .Values.service.port }}
+                echo     targetPort: 80
+                echo   selector:
+                echo     app: {{ .Release.Name }}
+                ) > hello-java-chart\templates\service.yaml
                 
                 @echo Creating ingress.yaml
-                echo apiVersion: networking.k8s.io/v1 > hello-java-chart\templates\ingress.yaml
-                echo kind: Ingress >> hello-java-chart\templates\ingress.yaml
-                echo metadata: >> hello-java-chart\templates\ingress.yaml
-                echo   name: {{ .Release.Name }} >> hello-java-chart\templates\ingress.yaml
-                echo spec: >> hello-java-chart\templates\ingress.yaml
-                echo   rules: >> hello-java-chart\templates\ingress.yaml
-                echo   - host: {{ .Values.ingress.hostname }} >> hello-java-chart\templates\ingress.yaml
-                echo     http: >> hello-java-chart\templates\ingress.yaml
-                echo       paths: >> hello-java-chart\templates\ingress.yaml
-                echo       - path: / >> hello-java-chart\templates\ingress.yaml
-                echo         pathType: Prefix >> hello-java-chart\templates\ingress.yaml
-                echo         backend: >> hello-java-chart\templates\ingress.yaml
-                echo           service: >> hello-java-chart\templates\ingress.yaml
-                echo             name: {{ .Release.Name }} >> hello-java-chart\templates\ingress.yaml
-                echo             port: >> hello-java-chart\templates\ingress.yaml
-                echo               number: {{ .Values.service.port }} >> hello-java-chart\templates\ingress.yaml
+                (
+                echo apiVersion: networking.k8s.io/v1
+                echo kind: Ingress
+                echo metadata:
+                echo   name: {{ .Release.Name }}
+                echo spec:
+                echo   rules:
+                echo   - host: {{ .Values.ingress.hostname }}
+                echo     http:
+                echo       paths:
+                echo       - path: /
+                echo         pathType: Prefix
+                echo         backend:
+                echo           service:
+                echo             name: {{ .Release.Name }}
+                echo             port:
+                echo               number: {{ .Values.service.port }}
+                ) > hello-java-chart\templates\ingress.yaml
                 
                 @echo Chart structure created:
                 dir hello-java-chart /s
