@@ -85,23 +85,59 @@ stages:
               artifactName: 'java-app'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          - task: HelmDeploy@0
-            displayName: 'Deploy Helm Chart'
+          # Download the kubeconfig file
+          - task: DownloadSecureFile@1
+            name: kubeconfig
+            displayName: 'Download kubeconfig file'
             inputs:
-              connectionType: 'Kubernetes Service Connection'
-              kubernetesServiceConnection: 'Rancher-K8s-Connection'  # Using your new service connection
-              namespace: '$(namespace)'
-              command: 'upgrade'
-              chartType: 'FilePath'
-              chartPath: '$(helmChartPath)'
-              releaseName: '$(releaseName)'
-              valueFile: '$(helmChartPath)/values/dev.yaml'
-              overrideValues: |
-                image.repository=nginx
-                image.tag=latest
-                ingress.hostname=$(releaseName).$(namespace).dev.oclc.org
-              waitForExecution: true
-              timeout: '5m'
+              secureFile: 'k8s-devlab.yaml'
+
+          # Create a modified kubeconfig with insecure-skip-tls-verify: true
+          - task: PowerShell@2
+            displayName: 'Create modified kubeconfig with insecure-skip-tls-verify'
+            inputs:
+              targetType: 'inline'
+              script: |
+                $kubeconfigContent = Get-Content -Path "$(kubeconfig.secureFilePath)" -Raw
+                
+                # Check if the file uses YAML 
+                if ($kubeconfigContent -match "apiVersion: v1") {
+                  Write-Host "Modifying YAML kubeconfig..."
+                
+                  # Replace or add insecure-skip-tls-verify setting
+                  if ($kubeconfigContent -match "insecure-skip-tls-verify:") {
+                    $kubeconfigContent = $kubeconfigContent -replace "insecure-skip-tls-verify: false", "insecure-skip-tls-verify: true"
+                  } else {
+                    # Find the clusters section and add the setting
+                    $kubeconfigContent = $kubeconfigContent -replace "(\s+cluster:.*?)((\r?\n\s+[^\s])|$)", "$1`n    insecure-skip-tls-verify: true$2"
+                  }
+                
+                  # Save the modified content
+                  $kubeconfigContent | Out-File -FilePath "$(Agent.TempDirectory)/modified-kubeconfig.yaml" -Encoding utf8
+                  Write-Host "Modified kubeconfig saved to $(Agent.TempDirectory)/modified-kubeconfig.yaml"
+                  Write-Host "Modified content preview:"
+                  Get-Content "$(Agent.TempDirectory)/modified-kubeconfig.yaml" | Select-Object -First 30
+                } else {
+                  Write-Error "Unsupported kubeconfig format"
+                }
+
+          # Deploy using the modified kubeconfig
+          - task: CmdLine@2
+            displayName: 'Deploy Helm Chart with modified kubeconfig'
+            inputs:
+              script: |
+                @echo Using modified kubeconfig for Helm deployment...
+                @echo Kubeconfig path: $(Agent.TempDirectory)\modified-kubeconfig.yaml
+                
+                @echo Running Helm upgrade command...
+                helm upgrade --install $(releaseName) $(helmChartPath) ^
+                  --namespace $(namespace) ^
+                  --values $(helmChartPath)/values/dev.yaml ^
+                  --set image.repository=nginx,image.tag=latest,ingress.hostname=$(releaseName).$(namespace).dev.oclc.org ^
+                  --wait --timeout 5m ^
+                  --kubeconfig $(Agent.TempDirectory)\modified-kubeconfig.yaml
+                
+                @echo Helm deployment completed.
 
           - task: CmdLine@2
             displayName: 'Print Deployment Info'
