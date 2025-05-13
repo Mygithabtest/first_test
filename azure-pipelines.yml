@@ -92,9 +92,9 @@ stages:
             inputs:
               secureFile: 'k8s-devlab.yaml'
 
-          # Create a basic Helm chart since it's missing
+          # Create a basic Helm chart with security context
           - task: CmdLine@2
-            displayName: 'Create Helm Chart'
+            displayName: 'Create Helm Chart with Security Context'
             inputs:
               script: |
                 @echo Creating Helm chart directory structure...
@@ -124,11 +124,19 @@ stages:
                 echo ingress: >> hello-java-chart\values.yaml
                 echo   enabled: true >> hello-java-chart\values.yaml
                 echo   hostname: hello-java.azuredeploytest.dev.oclc.org >> hello-java-chart\values.yaml
+                echo securityContext: >> hello-java-chart\values.yaml
+                echo   runAsNonRoot: true >> hello-java-chart\values.yaml
+                echo   runAsUser: 1000 >> hello-java-chart\values.yaml
+                echo   allowPrivilegeEscalation: false >> hello-java-chart\values.yaml
+                echo   capabilities: >> hello-java-chart\values.yaml
+                echo     drop: ["ALL"] >> hello-java-chart\values.yaml
+                echo   seccompProfile: >> hello-java-chart\values.yaml
+                echo     type: RuntimeDefault >> hello-java-chart\values.yaml
                 
                 @echo Creating dev values file
                 copy hello-java-chart\values.yaml hello-java-chart\values\dev.yaml
                 
-                @echo Creating deployment.yaml
+                @echo Creating deployment.yaml with security context
                 echo apiVersion: apps/v1 > hello-java-chart\templates\deployment.yaml
                 echo kind: Deployment >> hello-java-chart\templates\deployment.yaml
                 echo metadata: >> hello-java-chart\templates\deployment.yaml
@@ -143,10 +151,20 @@ stages:
                 echo       labels: >> hello-java-chart\templates\deployment.yaml
                 echo         app: {{ .Release.Name }} >> hello-java-chart\templates\deployment.yaml
                 echo     spec: >> hello-java-chart\templates\deployment.yaml
+                echo       securityContext: >> hello-java-chart\templates\deployment.yaml
+                echo         runAsNonRoot: true >> hello-java-chart\templates\deployment.yaml
                 echo       containers: >> hello-java-chart\templates\deployment.yaml
                 echo       - name: {{ .Release.Name }} >> hello-java-chart\templates\deployment.yaml
                 echo         image: {{ .Values.image.repository }}:{{ .Values.image.tag }} >> hello-java-chart\templates\deployment.yaml
                 echo         imagePullPolicy: {{ .Values.image.pullPolicy }} >> hello-java-chart\templates\deployment.yaml
+                echo         securityContext: >> hello-java-chart\templates\deployment.yaml
+                echo           allowPrivilegeEscalation: false >> hello-java-chart\templates\deployment.yaml
+                echo           capabilities: >> hello-java-chart\templates\deployment.yaml
+                echo             drop: ["ALL"] >> hello-java-chart\templates\deployment.yaml
+                echo           seccompProfile: >> hello-java-chart\templates\deployment.yaml
+                echo             type: RuntimeDefault >> hello-java-chart\templates\deployment.yaml
+                echo           runAsNonRoot: true >> hello-java-chart\templates\deployment.yaml
+                echo           runAsUser: 1000 >> hello-java-chart\templates\deployment.yaml
                 echo         ports: >> hello-java-chart\templates\deployment.yaml
                 echo         - containerPort: 80 >> hello-java-chart\templates\deployment.yaml
                 
