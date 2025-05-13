@@ -85,28 +85,11 @@ stages:
               artifactName: 'java-app'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          # Download the kubeconfig file from Secure Files
-          - task: DownloadSecureFile@1
-            name: kubeconfig
-            displayName: 'Download kubeconfig file'
-            inputs:
-              secureFile: 'k8s-devlab.yaml'
-
-          # Set KUBECONFIG environment variable
-          - task: CmdLine@2
-            displayName: 'Set KUBECONFIG environment variable'
-            inputs:
-              script: |
-                @echo Setting KUBECONFIG environment variable...
-                set KUBECONFIG=$(kubeconfig.secureFilePath)
-                @echo KUBECONFIG is set to: %KUBECONFIG%
-
           - task: HelmDeploy@0
             displayName: 'Deploy Helm Chart'
             inputs:
-              connectionType: 'Kubernetes Service Connection using kubeconfig'
-              kubeConfigVariableKey: 'KUBECONFIG'
-              kubeconfig: '$(kubeconfig.secureFilePath)'
+              connectionType: 'Kubernetes Service Connection'
+              kubernetesServiceConnection: 'Rancher-K8s-Connection'  # Using your new service connection
               namespace: '$(namespace)'
               command: 'upgrade'
               chartType: 'FilePath'
