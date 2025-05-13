@@ -4,7 +4,7 @@ trigger:
 
 variables:
   namespace: 'azuredeploytest'
-  helmChartPath: '$(System.DefaultWorkingDirectory)/hello-java-chart'
+  helmChartPath: 'hello-java-chart'  # Simplified path relative to working directory
   releaseName: 'hello-java'
 
 stages:
@@ -92,7 +92,34 @@ stages:
             inputs:
               secureFile: 'k8s-devlab.yaml'
 
-          # Use kubeconfig with insecure-skip-tls-verify flag
+          # Verify the chart path first
+          - task: CmdLine@2
+            displayName: 'Verify Helm Chart location'
+            inputs:
+              script: |
+                @echo Current directory:
+                cd
+                @echo Directory contents:
+                dir
+                @echo Checking for Helm chart:
+                if exist hello-java-chart (
+                  @echo Helm chart directory found
+                  dir hello-java-chart
+                ) else (
+                  @echo Helm chart directory NOT found
+                  @echo Searching for chart directory...
+                  dir /s /b | findstr "hello-java-chart"
+                )
+                @echo Checking for values file:
+                if exist hello-java-chart\values\dev.yaml (
+                  @echo Values file found
+                  type hello-java-chart\values\dev.yaml
+                ) else (
+                  @echo Values file NOT found
+                  dir /s /b | findstr "dev.yaml"
+                )
+
+          # Use kubeconfig with insecure-skip-tls-verify flag and adjusted path
           - task: CmdLine@2
             displayName: 'Deploy Helm Chart with kubeconfig and insecure flag'
             inputs:
@@ -100,9 +127,9 @@ stages:
                 @echo Deploying Helm chart with kubeconfig and insecure-skip-tls-verify flag...
                 
                 @echo Running Helm upgrade command...
-                helm upgrade --install $(releaseName) $(helmChartPath) ^
+                helm upgrade --install $(releaseName) ./$(helmChartPath) ^
                   --namespace $(namespace) ^
-                  --values $(helmChartPath)/values/dev.yaml ^
+                  --values ./$(helmChartPath)/values/dev.yaml ^
                   --set image.repository=nginx,image.tag=latest,ingress.hostname=$(releaseName).$(namespace).dev.oclc.org ^
                   --wait --timeout 5m ^
                   --kubeconfig $(kubeconfig.secureFilePath) ^
