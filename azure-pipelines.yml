@@ -85,12 +85,19 @@ stages:
               artifactName: 'java-app'
               downloadPath: '$(System.ArtifactsDirectory)'
 
-          # Let's go for the simplest solution - direct Helm command with insecure-skip-tls-verify
+          # Download the kubeconfig file
+          - task: DownloadSecureFile@1
+            name: kubeconfig
+            displayName: 'Download kubeconfig file'
+            inputs:
+              secureFile: 'k8s-devlab.yaml'
+
+          # Use kubeconfig with insecure-skip-tls-verify flag
           - task: CmdLine@2
-            displayName: 'Deploy Helm Chart using direct command'
+            displayName: 'Deploy Helm Chart with kubeconfig and insecure flag'
             inputs:
               script: |
-                @echo Deploying Helm chart with insecure-skip-tls-verify flag...
+                @echo Deploying Helm chart with kubeconfig and insecure-skip-tls-verify flag...
                 
                 @echo Running Helm upgrade command...
                 helm upgrade --install $(releaseName) $(helmChartPath) ^
@@ -98,7 +105,10 @@ stages:
                   --values $(helmChartPath)/values/dev.yaml ^
                   --set image.repository=nginx,image.tag=latest,ingress.hostname=$(releaseName).$(namespace).dev.oclc.org ^
                   --wait --timeout 5m ^
+                  --kubeconfig $(kubeconfig.secureFilePath) ^
                   --insecure-skip-tls-verify
+                
+                @echo Helm deployment command completed.
 
           - task: CmdLine@2
             displayName: 'Print Deployment Info'
