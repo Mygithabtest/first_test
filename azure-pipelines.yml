@@ -59,8 +59,8 @@ stages:
                 }
             continueOnError: true
 
-          # Build the Java application
-          - task: Maven@3
+          # Build the Java application with updated Maven task
+          - task: Maven@4
             displayName: 'Build Java Application'
             inputs:
               mavenPomFile: 'pom.xml'
