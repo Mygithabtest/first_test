@@ -29,7 +29,7 @@ stages:
             displayName: 'Run Security Scan'
             inputs:
               config: ''
-              # Removed 'java' as it's not supported in your environment
+              # Only use supported tools
               tools: 'templateanalyzer, trivy'
               outputDir: '$(Build.ArtifactStagingDirectory)/security-results'
             continueOnError: true
@@ -115,12 +115,13 @@ stages:
                 @echo Setting up System PATH...
                 set PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\wbem;%PATH%
 
-          # Run security scan on Helm chart
+          # Run security scan on Helm chart with only templateanalyzer
           - task: MicrosoftSecurityDevOps@1
             displayName: 'Scan Kubernetes Templates'
             inputs:
               config: ''
-              tools: 'templateanalyzer, kubesec'
+              # Only use templateanalyzer (kubesec not supported)
+              tools: 'templateanalyzer'
               outputDir: '$(Build.ArtifactStagingDirectory)/k8s-security-results'
               templateAnalyzerPath: '$(System.DefaultWorkingDirectory)/$(helmChartPath)/templates'
             continueOnError: true
