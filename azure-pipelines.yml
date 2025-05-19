@@ -4,7 +4,7 @@ trigger:
 
 variables:
   namespace: 'azuredeploytest'
-  helmChartPath: 'hello-java-chart'
+  helmChartPath: 'src/hello-java-chart'
   releaseName: 'hello-java'
 
 stages:
@@ -30,8 +30,36 @@ stages:
             inputs:
               config: ''
               tools: 'bandit, eslint, java'
-              # Optional: Add specific configurations for scanning
             continueOnError: true
+
+          # Diagnostic step to find where security scan results are stored
+          - task: CmdLine@2
+            displayName: 'Locate Security Scan Results'
+            inputs:
+              script: |
+                @echo Looking for security scan result locations...
+                
+                @echo Checking Pipeline.Workspace...
+                dir "$(Pipeline.Workspace)" /s /b | findstr /i _sdt
+                dir "$(Pipeline.Workspace)" /s /b | findstr /i CodeAnalysisLogs
+                dir "$(Pipeline.Workspace)" /s /b | findstr /i sarif
+                
+                @echo Checking Build.SourcesDirectory...
+                dir "$(Build.SourcesDirectory)" /s /b | findstr /i _sdt
+                dir "$(Build.SourcesDirectory)" /s /b | findstr /i CodeAnalysisLogs
+                dir "$(Build.SourcesDirectory)" /s /b | findstr /i sarif
+                
+                @echo Checking Agent.BuildDirectory...
+                dir "$(Agent.BuildDirectory)" /s /b | findstr /i _sdt
+                dir "$(Agent.BuildDirectory)" /s /b | findstr /i CodeAnalysisLogs
+                dir "$(Agent.BuildDirectory)" /s /b | findstr /i sarif
+                
+                @echo Environment variables:
+                echo Pipeline.Workspace: $(Pipeline.Workspace)
+                echo Build.SourcesDirectory: $(Build.SourcesDirectory)
+                echo Build.ArtifactStagingDirectory: $(Build.ArtifactStagingDirectory)
+                echo Agent.BuildDirectory: $(Agent.BuildDirectory)
+            condition: succeededOrFailed()
 
           - task: Maven@3
             displayName: 'Build Java Application'
@@ -53,13 +81,32 @@ stages:
               Contents: '*.jar'
               TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-          # Publish security scan results
+          # Try different possible locations for security scan results
           - task: PublishBuildArtifacts@1
-            displayName: 'Publish Security Scan Results'
+            displayName: 'Publish Security Scan Results - Pipeline.Workspace'
             inputs:
-              PathtoPublish: '$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs'
-              ArtifactName: 'SecurityScanResults'
+              PathtoPublish: '$(Pipeline.Workspace)\_sdt'
+              ArtifactName: 'SecurityScanResults_PipelineWorkspace'
               publishLocation: 'Container'
+            continueOnError: true
+            condition: succeededOrFailed()
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Security Scan Results - Build.SourcesDirectory'
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)\_sdt'
+              ArtifactName: 'SecurityScanResults_SourcesDirectory'
+              publishLocation: 'Container'
+            continueOnError: true
+            condition: succeededOrFailed()
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Security Scan Results - Agent.BuildDirectory'
+            inputs:
+              PathtoPublish: '$(Agent.BuildDirectory)\_sdt'
+              ArtifactName: 'SecurityScanResults_BuildDirectory'
+              publishLocation: 'Container'
+            continueOnError: true
             condition: succeededOrFailed()
 
           - task: PublishBuildArtifacts@1
@@ -72,6 +119,7 @@ stages:
   # Add security scanning for Helm chart
   - stage: SecurityAnalyzeK8s
     displayName: 'Security Analysis - K8s Templates'
+    dependsOn: Build
     jobs:
       - job: ScanK8sTemplates
         displayName: 'Scan Kubernetes Templates'
@@ -91,17 +139,65 @@ stages:
             inputs:
               config: ''
               tools: 'template-analyzer, kubesec'
-              # Specific paths for Helm chart
+              # Provide path to Helm templates
               templateAnalyzerPath: '$(System.DefaultWorkingDirectory)/$(helmChartPath)/templates'
             continueOnError: true
 
-          # Publish security scan results for K8s templates
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish K8s Security Scan Results'
+          # Diagnostic step to find where security scan results are stored
+          - task: CmdLine@2
+            displayName: 'Locate K8s Security Scan Results'
             inputs:
-              PathtoPublish: '$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs'
-              ArtifactName: 'K8sSecurityScanResults'
+              script: |
+                @echo Looking for security scan result locations...
+                
+                @echo Checking Pipeline.Workspace...
+                dir "$(Pipeline.Workspace)" /s /b | findstr /i _sdt
+                dir "$(Pipeline.Workspace)" /s /b | findstr /i CodeAnalysisLogs
+                dir "$(Pipeline.Workspace)" /s /b | findstr /i sarif
+                
+                @echo Checking Build.SourcesDirectory...
+                dir "$(Build.SourcesDirectory)" /s /b | findstr /i _sdt
+                dir "$(Build.SourcesDirectory)" /s /b | findstr /i CodeAnalysisLogs
+                dir "$(Build.SourcesDirectory)" /s /b | findstr /i sarif
+                
+                @echo Checking Agent.BuildDirectory...
+                dir "$(Agent.BuildDirectory)" /s /b | findstr /i _sdt
+                dir "$(Agent.BuildDirectory)" /s /b | findstr /i CodeAnalysisLogs
+                dir "$(Agent.BuildDirectory)" /s /b | findstr /i sarif
+                
+                @echo Environment variables:
+                echo Pipeline.Workspace: $(Pipeline.Workspace)
+                echo Build.SourcesDirectory: $(Build.SourcesDirectory)
+                echo Build.ArtifactStagingDirectory: $(Build.ArtifactStagingDirectory)
+                echo Agent.BuildDirectory: $(Agent.BuildDirectory)
+            condition: succeededOrFailed()
+
+          # Try different possible locations for security scan results
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish K8s Security Scan Results - Pipeline.Workspace'
+            inputs:
+              PathtoPublish: '$(Pipeline.Workspace)\_sdt'
+              ArtifactName: 'K8sSecurityScanResults_PipelineWorkspace'
               publishLocation: 'Container'
+            continueOnError: true
+            condition: succeededOrFailed()
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish K8s Security Scan Results - Build.SourcesDirectory'
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)\_sdt'
+              ArtifactName: 'K8sSecurityScanResults_SourcesDirectory'
+              publishLocation: 'Container'
+            continueOnError: true
+            condition: succeededOrFailed()
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish K8s Security Scan Results - Agent.BuildDirectory'
+            inputs:
+              PathtoPublish: '$(Agent.BuildDirectory)\_sdt'
+              ArtifactName: 'K8sSecurityScanResults_BuildDirectory'
+              publishLocation: 'Container'
+            continueOnError: true
             condition: succeededOrFailed()
 
   - stage: Deploy
@@ -147,7 +243,7 @@ stages:
             inputs:
               secureFile: 'k8s-devlab.yaml'
 
-          # Deploy using the pre-created Helm chart
+          # Deploy using the existing Helm chart
           - task: CmdLine@2
             displayName: 'Deploy Helm Chart with kubeconfig and insecure flag'
             inputs:
