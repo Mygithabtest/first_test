@@ -1,12 +1,16 @@
-replicaCount: 1
-
-resources:
-  limits:
-    cpu: 300m
-    memory: 384Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
-
-ingress:
-  hostname: hello-java.azuredeploytest.dev.oclc.org
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  rules:
+    - host: {{ .Values.ingress.hostname }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Release.Name }}
+                port:
+                  number: {{ .Values.service.port }}

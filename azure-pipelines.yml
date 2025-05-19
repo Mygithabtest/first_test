@@ -24,6 +24,15 @@ stages:
                 set PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\wbem;C:\Program Files\Java\jdk-21.0.7\bin;C:\Program Files\Apache\apache-maven-3.9.9\bin;%PATH%
                 @echo PATH is now: %PATH%
 
+          # Add security scanning for Java code
+          - task: MicrosoftSecurityDevOps@1
+            displayName: 'Run Security Scan - Java Code'
+            inputs:
+              config: ''
+              tools: 'bandit, eslint, java'
+              # Optional: Add specific configurations for scanning
+            continueOnError: true
+
           - task: Maven@3
             displayName: 'Build Java Application'
             inputs:
@@ -44,6 +53,15 @@ stages:
               Contents: '*.jar'
               TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
+          # Publish security scan results
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish Security Scan Results'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs'
+              ArtifactName: 'SecurityScanResults'
+              publishLocation: 'Container'
+            condition: succeededOrFailed()
+
           - task: PublishBuildArtifacts@1
             displayName: 'Publish JAR Artifact'
             inputs:
@@ -51,9 +69,46 @@ stages:
               ArtifactName: 'java-app'
               publishLocation: 'Container'
 
+  # Add security scanning for Helm chart
+  - stage: SecurityAnalyzeK8s
+    displayName: 'Security Analysis - K8s Templates'
+    jobs:
+      - job: ScanK8sTemplates
+        displayName: 'Scan Kubernetes Templates'
+        pool:
+          name: 'Windows'
+        steps:
+          - task: CmdLine@2
+            displayName: 'Fix PATH for System Tools'
+            inputs:
+              script: |
+                @echo Setting up System PATH...
+                set PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\WindowsPowerShell\v1.0;C:\Windows\System32\wbem;%PATH%
+
+          # Run security scan on Helm chart
+          - task: MicrosoftSecurityDevOps@1
+            displayName: 'Scan Kubernetes Templates'
+            inputs:
+              config: ''
+              tools: 'template-analyzer, kubesec'
+              # Specific paths for Helm chart
+              templateAnalyzerPath: '$(System.DefaultWorkingDirectory)/$(helmChartPath)/templates'
+            continueOnError: true
+
+          # Publish security scan results for K8s templates
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish K8s Security Scan Results'
+            inputs:
+              PathtoPublish: '$(Build.ArtifactStagingDirectory)/CodeAnalysisLogs'
+              ArtifactName: 'K8sSecurityScanResults'
+              publishLocation: 'Container'
+            condition: succeededOrFailed()
+
   - stage: Deploy
     displayName: 'Deploy to Kubernetes'
-    dependsOn: Build
+    dependsOn:
+      - Build
+      - SecurityAnalyzeK8s
     condition: succeeded()
     jobs:
       - job: DeployToK8s
@@ -92,157 +147,7 @@ stages:
             inputs:
               secureFile: 'k8s-devlab.yaml'
 
-          # Create a basic Helm chart with security context and resource limits
-          - task: CmdLine@2
-            displayName: 'Create Helm Chart for Non-Root Container'
-            inputs:
-              script: |
-                @echo Creating Helm chart directory structure...
-                
-                @echo Creating basic chart directory structure
-                mkdir hello-java-chart
-                mkdir hello-java-chart\templates
-                mkdir hello-java-chart\values
-                
-                @echo Creating Chart.yaml
-                echo apiVersion: v2 > hello-java-chart\Chart.yaml
-                echo name: hello-java >> hello-java-chart\Chart.yaml
-                echo description: A Helm chart for Hello Java application >> hello-java-chart\Chart.yaml
-                echo type: application >> hello-java-chart\Chart.yaml
-                echo version: 0.1.0 >> hello-java-chart\Chart.yaml
-                echo appVersion: "1.0.0" >> hello-java-chart\Chart.yaml
-                
-                @echo Creating values.yaml
-                (
-                echo replicaCount: 1
-                echo image:
-                echo   # Using bitnami/nginx which is designed to run as non-root
-                echo   repository: bitnami/nginx
-                echo   tag: latest
-                echo   pullPolicy: IfNotPresent
-                echo service:
-                echo   type: ClusterIP
-                echo   port: 8080
-                echo ingress:
-                echo   enabled: true
-                echo   hostname: hello-java.azuredeploytest.dev.oclc.org
-                echo resources:
-                echo   limits:
-                echo     cpu: 500m
-                echo     memory: 512Mi
-                echo   requests:
-                echo     cpu: 100m
-                echo     memory: 128Mi
-                ) > hello-java-chart\values.yaml
-                
-                @echo Creating dev values file
-                copy hello-java-chart\values.yaml hello-java-chart\values\dev.yaml
-                
-                @echo Creating deployment.yaml with security context and resource limits
-                (
-                echo apiVersion: apps/v1
-                echo kind: Deployment
-                echo metadata:
-                echo   name: {{ .Release.Name }}
-                echo   labels:
-                echo     app: {{ .Release.Name }}
-                echo spec:
-                echo   replicas: {{ .Values.replicaCount }}
-                echo   selector:
-                echo     matchLabels:
-                echo       app: {{ .Release.Name }}
-                echo   template:
-                echo     metadata:
-                echo       labels:
-                echo         app: {{ .Release.Name }}
-                echo     spec:
-                echo       securityContext:
-                echo         runAsNonRoot: true
-                echo         fsGroup: 1001
-                echo       containers:
-                echo       - name: {{ .Release.Name }}
-                echo         image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
-                echo         imagePullPolicy: {{ .Values.image.pullPolicy }}
-                echo         securityContext:
-                echo           allowPrivilegeEscalation: false
-                echo           capabilities:
-                echo             drop:
-                echo             - ALL
-                echo           runAsNonRoot: true
-                echo           runAsUser: 1001
-                echo           seccompProfile:
-                echo             type: RuntimeDefault
-                echo         ports:
-                echo         - name: http
-                echo           containerPort: 8080
-                echo           protocol: TCP
-                echo         resources:
-                echo           limits:
-                echo             cpu: {{ .Values.resources.limits.cpu }}
-                echo             memory: {{ .Values.resources.limits.memory }}
-                echo           requests:
-                echo             cpu: {{ .Values.resources.requests.cpu }}
-                echo             memory: {{ .Values.resources.requests.memory }}
-                echo         livenessProbe:
-                echo           httpGet:
-                echo             path: /
-                echo             port: http
-                echo           initialDelaySeconds: 30
-                echo           timeoutSeconds: 5
-                echo           failureThreshold: 6
-                echo         readinessProbe:
-                echo           httpGet:
-                echo             path: /
-                echo             port: http
-                echo           initialDelaySeconds: 5
-                echo           timeoutSeconds: 3
-                echo           periodSeconds: 5
-                ) > hello-java-chart\templates\deployment.yaml
-                
-                @echo Creating service.yaml
-                (
-                echo apiVersion: v1
-                echo kind: Service
-                echo metadata:
-                echo   name: {{ .Release.Name }}
-                echo spec:
-                echo   type: {{ .Values.service.type }}
-                echo   ports:
-                echo   - port: {{ .Values.service.port }}
-                echo     targetPort: 8080
-                echo     protocol: TCP
-                echo     name: http
-                echo   selector:
-                echo     app: {{ .Release.Name }}
-                ) > hello-java-chart\templates\service.yaml
-                
-                @echo Creating ingress.yaml
-                (
-                echo apiVersion: networking.k8s.io/v1
-                echo kind: Ingress
-                echo metadata:
-                echo   name: {{ .Release.Name }}
-                echo spec:
-                echo   rules:
-                echo   - host: {{ .Values.ingress.hostname }}
-                echo     http:
-                echo       paths:
-                echo       - path: /
-                echo         pathType: Prefix
-                echo         backend:
-                echo           service:
-                echo             name: {{ .Release.Name }}
-                echo             port:
-                echo               number: {{ .Values.service.port }}
-                ) > hello-java-chart\templates\ingress.yaml
-                
-                @echo Chart structure created:
-                dir hello-java-chart /s
-                
-                @echo Checking deployment.yaml content:
-                type hello-java-chart\templates\deployment.yaml
-
-          # Deploy with the newly created chart
+          # Deploy using the pre-created Helm chart
           - task: CmdLine@2
             displayName: 'Deploy Helm Chart with kubeconfig and insecure flag'
             inputs:
