@@ -151,7 +151,6 @@ stages:
                 }
             continueOnError: true
 
-          # Publish K8s security scan results
           - task: PublishBuildArtifacts@1
             displayName: 'Publish K8s Security Scan Results'
             inputs:
