@@ -1,8 +1,8 @@
-name: Java Application POC (Simple)
+name: Java Application POC
 
 on:
   push:
-    branches: [ main, feature/* ]
+    branches: [ main, github-pipeline]
   workflow_dispatch:
 
 env:
