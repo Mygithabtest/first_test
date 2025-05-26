@@ -1,31 +1,28 @@
-name: Java Application POC
+name: Build, Push and Deploy
 
 on:
   push:
-    branches: [ main, github-pipeline]
+    branches: [ main, gitlab-pipeline ]
   workflow_dispatch:
 
 env:
-  APP_NAME: 'hello-java-app'
+  APP_NAME: 'hello-java'
+  DOCKERHUB_REPO: 'hello-java-app'
 
 jobs:
-  build:
-    name: Build Java Application
+  build-and-deploy:
+    name: Build, Push to DockerHub and Deploy
     runs-on: self-hosted
-    outputs:
-      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Set up Java and Maven paths
+      - name: Set up Java and Maven
         run: |
           echo "C:\Program Files\Java\jdk-21.0.7\bin" >> $env:GITHUB_PATH
           echo "C:\Program Files\Apache\apache-maven-3.9.9\bin" >> $env:GITHUB_PATH
 
-      - name: Determine version
+      - name: Set version
         id: version
         run: |
           $VERSION = "1.0.${{ github.run_number }}"
@@ -34,181 +31,99 @@ jobs:
 
       - name: Build with Maven
         run: |
-          echo "Building Java application..."
-          mvn clean compile -DskipTests
-          echo "✓ Build completed successfully"
+          mvn clean package -DskipTests
+          echo "✓ Maven build completed"
 
-      - name: Run tests
-        run: |
-          echo "Running tests..."
-          mvn test
-          echo "✓ Tests completed"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Package application
-        run: |
-          echo "Packaging application..."
-          mvn package -DskipTests
-          echo "✓ Packaging completed"
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
         with:
-          name: java-application-${{ github.run_number }}
-          path: target/*.jar
-          retention-days: 30
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-  test:
-    name: Additional Testing
-    runs-on: self-hosted
-    needs: build
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: java-application-${{ github.run_number }}
-          path: target
-
-      - name: Integration tests
-        run: |
-          echo "Running integration tests..."
-          echo "✓ Integration tests passed"
-
-      - name: Security scan simulation
-        run: |
-          echo "Running security scans..."
-          echo "✓ Security scan completed"
-
-  release:
-    name: Create Release (Simulation)
-    runs-on: self-hosted
-    needs: [build, test]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: java-application-${{ github.run_number }}
-          path: artifacts
-
-      - name: Simulate Release Creation
+      - name: Build and push Docker image
         env:
-          VERSION: ${{ needs.build.outputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          echo "=== GitHub Release Simulation ==="
-          echo "✅ Would create release: v$env:VERSION"
-          echo "📝 Release notes: Automated release from GitHub Actions POC"
-          echo "🌿 Branch: ${{ github.ref_name }}"
-          echo "📦 Commit: ${{ github.sha }}"
-          echo "📎 Artifacts included:"
-          Get-ChildItem -Path "artifacts" | Select-Object Name, Length
-          echo "✅ Release simulation completed successfully"
-
-  deploy-dev:
-    name: Deploy to Development
-    runs-on: self-hosted
-    needs: [build, test]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: java-application-${{ github.run_number }}
-          path: deployment-artifacts
-
-      - name: Verify Helm chart
-        run: |
-          echo "Verifying Helm chart structure..."
-          if (Test-Path "src\hello-java-chart") {
-            echo "✅ Helm chart found"
-            Get-ChildItem -Path "src\hello-java-chart" -Recurse | Select-Object Name, FullName
-          } else {
-            echo "ℹ️  Helm chart not found (expected for POC)"
+          $IMAGE = "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}:$env:VERSION"
+          $LATEST = "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}:latest"
+          
+          echo "Building and pushing: $IMAGE"
+          docker build -t $IMAGE .
+          docker push $IMAGE
+          
+          if ("${{ github.ref }}" -eq "refs/heads/main") {
+            docker tag $IMAGE $LATEST
+            docker push $LATEST
+            echo "✓ Also pushed as latest"
           }
+          
+          echo "image=$IMAGE" >> $env:GITHUB_OUTPUT
 
-      - name: Development Deployment
-        env:
-          VERSION: ${{ needs.build.outputs.version }}
-          NAMESPACE: 'development'
+      - name: Set up kubectl and Helm
         run: |
-          echo "=== Development Deployment ==="
-          echo "🚀 Deploying version: $env:VERSION"
-          echo "🎯 Target namespace: $env:NAMESPACE"
-          echo "📱 Application: ${{ env.APP_NAME }}"
-          echo "🌿 Branch: ${{ github.ref_name }}"
-          echo "📦 Artifacts to deploy:"
-          Get-ChildItem -Path "deployment-artifacts" | Select-Object Name, Length
-          echo "✅ Development deployment completed successfully"
+          # Verify kubectl and helm are available
+          kubectl version --client
+          helm version
 
-  deploy-prod:
-    name: Deploy to Production
-    runs-on: self-hosted
-    needs: [deploy-dev, release]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: java-application-${{ github.run_number }}
-          path: deployment-artifacts
-
-      - name: Production Deployment
-        env:
-          VERSION: ${{ needs.build.outputs.version }}
-          NAMESPACE: 'production'
+      - name: Configure Kubernetes
         run: |
-          echo "=== Production Deployment ==="
-          echo "🚀 Deploying version: $env:VERSION to PRODUCTION"
-          echo "🌿 Branch: ${{ github.ref_name }}"
-          echo "⚠️  In a real scenario, this would require manual approval"
-          echo "📋 Production deployment checklist:"
-          echo "   ✅ Health checks passed"
-          echo "   ✅ Load balancer updated"
-          echo "   ✅ Monitoring configured"
-          echo "   ✅ Rollback plan ready"
-          echo "🎉 Production deployment completed successfully!"
+          echo "${{ secrets.KUBECONFIG_CONTENT }}" | Out-File -FilePath kubeconfig.yaml -Encoding utf8
+          kubectl --kubeconfig="kubeconfig.yaml" cluster-info
 
-  poc-summary:
-    name: POC Summary
-    runs-on: self-hosted
-    needs: [deploy-prod, build]
-    if: always()
-    steps:
-      - name: POC Results Summary
+      - name: Deploy to Development
         env:
-          VERSION: ${{ needs.build.outputs.version }}
+          VERSION: ${{ steps.version.outputs.version }}
+          IMAGE: "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}"
+        run: |
+          echo "=== Deploying to Development ==="
+          helm upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
+            --namespace development `
+            --create-namespace `
+            --set image.repository=$env:IMAGE `
+            --set image.tag=$env:VERSION `
+            --values ./src/hello-java-chart/values/dev.yaml `
+            --kubeconfig kubeconfig.yaml `
+            --wait --timeout 5m
+          
+          echo "✓ Development deployment completed"
+
+      - name: Verify Development Deployment
+        run: |
+          kubectl --kubeconfig="kubeconfig.yaml" get pods -n development -l app.kubernetes.io/name=${{ env.APP_NAME }}
+          kubectl --kubeconfig="kubeconfig.yaml" get services -n development
+
+      - name: Deploy to Production
+        if: github.ref == 'refs/heads/main'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IMAGE: "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}"
+        run: |
+          echo "=== Deploying to Production ==="
+          helm upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
+            --namespace production `
+            --create-namespace `
+            --set image.repository=$env:IMAGE `
+            --set image.tag=$env:VERSION `
+            --kubeconfig kubeconfig.yaml `
+            --wait --timeout 10m
+          
+          echo "🚀 Production deployment completed!"
+
+      - name: Deployment Summary
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           echo "=================================================="
-          echo "🎯 GITHUB ACTIONS POC - FINAL RESULTS"
+          echo "🚀 DEPLOYMENT SUMMARY"
           echo "=================================================="
-          echo "📊 Pipeline Status: SUCCESSFUL"
-          echo "🌿 Branch: ${{ github.ref_name }}"
           echo "📦 Version: $env:VERSION"
-          echo "🏃 Runner: Self-hosted Windows runner"
-          echo ""
-          echo "✅ DEMONSTRATED CAPABILITIES:"
-          echo "  🔨 Multi-stage pipeline (Build → Test → Release → Deploy)"
-          echo "  📦 Artifact management between jobs"
-          echo "  🎯 Environment-specific deployments"
-          echo "  🔄 Job dependencies and conditional execution"
-          echo "  🖥️  Self-hosted runner execution"
-          echo "  🌊 Cross-job data flow"
-          echo ""
-          echo "🔄 GITLAB TO GITHUB EQUIVALENCIES:"
-          echo "  GitLab Stages     → GitHub Jobs"
-          echo "  GitLab Variables  → GitHub Environment Variables"
-          echo "  GitLab Artifacts  → GitHub Actions Artifacts"
-          echo "  GitLab Runners    → GitHub Self-hosted Runners"
-          echo "  GitLab Manual     → GitHub Environments (can add approvals)"
-          echo ""
-          echo "🎉 CONCLUSION: GitLab CI/CD functionality successfully"
-          echo "   demonstrated in GitHub Actions!"
+          echo "🐳 Image: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}:$env:VERSION"
+          echo "🌿 Branch: ${{ github.ref_name }}"
+          echo "✅ Development: Deployed"
+          if ("${{ github.ref }}" -eq "refs/heads/main") {
+            echo "✅ Production: Deployed"
+          }
           echo "=================================================="
