@@ -125,3 +125,5 @@ jobs:
             echo "✅ Production: Deployed to azuredeploytest namespace"
           }
           echo "=================================================="
+          # Make a small change to trigger the workflow
+          echo "# Docker test successful - ready for deployment" >> README.md
