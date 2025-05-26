@@ -34,19 +34,6 @@ jobs:
           mvn clean package -DskipTests
           echo "✓ Maven build completed"
 
-      - name: Check Docker status
-        run: |
-          try {
-            docker --version
-            docker info
-            echo "✓ Docker is running"
-          }
-          catch {
-            echo "❌ Docker is not running or not accessible"
-            echo "Please ensure Docker Desktop is running on your self-hosted runner"
-            exit 1
-          }
-
       - name: Log in to DockerHub
         run: |
           echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
