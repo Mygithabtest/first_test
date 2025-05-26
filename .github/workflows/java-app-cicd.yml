@@ -2,11 +2,11 @@ name: Build, Push and Deploy
 
 on:
   push:
-    branches: [ main, gitlab-pipeline ]
+    branches: [ main, feature/*, github-pipeline ]  # Added github-pipeline branch
   workflow_dispatch:
 
 env:
-  APP_NAME: 'hello-java'
+  APP_NAME: 'hello-java-github'  # Changed to avoid conflicts
   DOCKERHUB_REPO: 'hello-java-app'
 
 jobs:
@@ -80,7 +80,7 @@ jobs:
         run: |
           echo "=== Deploying to Development ==="
           helm upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
-            --namespace development `
+            --namespace azuredeploytest `
             --create-namespace `
             --set image.repository=$env:IMAGE `
             --set image.tag=$env:VERSION `
@@ -92,8 +92,8 @@ jobs:
 
       - name: Verify Development Deployment
         run: |
-          kubectl --kubeconfig="kubeconfig.yaml" get pods -n development -l app.kubernetes.io/name=${{ env.APP_NAME }}
-          kubectl --kubeconfig="kubeconfig.yaml" get services -n development
+          kubectl --kubeconfig="kubeconfig.yaml" get pods -n azuredeploytest -l app.kubernetes.io/name=${{ env.APP_NAME }}
+          kubectl --kubeconfig="kubeconfig.yaml" get services -n azuredeploytest
 
       - name: Deploy to Production
         if: github.ref == 'refs/heads/main'
@@ -103,8 +103,7 @@ jobs:
         run: |
           echo "=== Deploying to Production ==="
           helm upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
-            --namespace production `
-            --create-namespace `
+            --namespace azuredeploytest `
             --set image.repository=$env:IMAGE `
             --set image.tag=$env:VERSION `
             --kubeconfig kubeconfig.yaml `
@@ -122,8 +121,8 @@ jobs:
           echo "📦 Version: $env:VERSION"
           echo "🐳 Image: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}:$env:VERSION"
           echo "🌿 Branch: ${{ github.ref_name }}"
-          echo "✅ Development: Deployed"
+          echo "✅ Development: Deployed to azuredeploytest namespace"
           if ("${{ github.ref }}" -eq "refs/heads/main") {
-            echo "✅ Production: Deployed"
+            echo "✅ Production: Deployed to azuredeploytest namespace"
           }
           echo "=================================================="
