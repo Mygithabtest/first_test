@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/openjdk/jdk:21-windowsservercore-ltsc2022
+FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
