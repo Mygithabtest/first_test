@@ -1,4 +1,4 @@
-FROM openjdk:21-jre-slim
+FROM mcr.microsoft.com/openjdk/jdk:21-windowsservercore-ltsc2022
 
 WORKDIR /app
 
