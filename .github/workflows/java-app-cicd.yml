@@ -87,6 +87,7 @@ jobs:
             --create-namespace `
             --set image.repository=$env:IMAGE `
             --set image.tag=$env:VERSION `
+            --set ingress.hostname=${{ env.APP_NAME }}.azuredeploytest.dev.oclc.org `
             --values ./src/hello-java-chart/values/dev.yaml `
             --kubeconfig kubeconfig.yaml `
             --wait --timeout 5m
@@ -109,6 +110,7 @@ jobs:
             --namespace azuredeploytest `
             --set image.repository=$env:IMAGE `
             --set image.tag=$env:VERSION `
+            --set ingress.hostname=${{ env.APP_NAME }}.azuredeploytest.oclc.org `
             --kubeconfig kubeconfig.yaml `
             --wait --timeout 10m
           
