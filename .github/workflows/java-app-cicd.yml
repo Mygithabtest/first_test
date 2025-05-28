@@ -12,7 +12,7 @@ env:
 jobs:
   build-and-deploy:
     name: Build, Push to DockerHub and Deploy
-    runs-on: [self-hosted, Windows, X64]  # Explicitly target your runner with all labels
+    runs-on: [self-hosted, Windows, X64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -62,24 +62,21 @@ jobs:
 
       - name: Set up kubectl and Helm
         run: |
-          # Add kubectl to PATH
-          echo "C:\Program Files\kubectl" >> $env:GITHUB_PATH
+          # Add pre-installed tools to PATH
+          echo "C:\actions-runner\tools" >> $env:GITHUB_PATH
           
-          # Add helm to PATH
-          echo "C:\tools\helm" >> $env:GITHUB_PATH
-          
-          # Verify kubectl is accessible
-          & "C:\Program Files\kubectl\kubectl.exe" version --client
+          # Test kubectl
+          kubectl version --client
           echo "✓ kubectl is ready"
           
-          # Verify helm is accessible
-          & "C:\tools\helm\helm.exe" version
+          # Test helm
+          helm version
           echo "✓ helm is ready"
 
       - name: Configure Kubernetes
         run: |
           echo "${{ secrets.KUBECONFIG_CONTENT }}" | Out-File -FilePath kubeconfig.yaml -Encoding utf8
-          & "C:\Program Files\kubectl\kubectl.exe" --kubeconfig="kubeconfig.yaml" cluster-info
+          kubectl --kubeconfig="kubeconfig.yaml" cluster-info
           echo "✓ Kubernetes configured"
 
       - name: Deploy to Development
@@ -101,8 +98,8 @@ jobs:
 
       - name: Verify Development Deployment
         run: |
-          & "C:\Program Files\kubectl\kubectl.exe" --kubeconfig="kubeconfig.yaml" get pods -n azuredeploytest -l app.kubernetes.io/name=${{ env.APP_NAME }}
-          & "C:\Program Files\kubectl\kubectl.exe" --kubeconfig="kubeconfig.yaml" get services -n azuredeploytest
+          kubectl --kubeconfig="kubeconfig.yaml" get pods -n azuredeploytest -l app.kubernetes.io/name=${{ env.APP_NAME }}
+          kubectl --kubeconfig="kubeconfig.yaml" get services -n azuredeploytest
 
       - name: Deploy to Production
         if: github.ref == 'refs/heads/main'
