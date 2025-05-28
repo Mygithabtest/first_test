@@ -1,18 +1,12 @@
-FROM eclipse-temurin:11-jre
+# Simple test with nginx to verify deployment works
+FROM nginx:alpine
 
-WORKDIR /app
+# Create a simple index page
+RUN echo '<h1>Hello from GitHub Actions POC!</h1><p>Java app deployment successful!</p><p>Version: BUILD_VERSION</p>' > /usr/share/nginx/html/index.html
 
-# Copy the JAR file
-COPY target/*.jar app.jar
+# Change default port to 8080 to match your service
+RUN sed -i 's/listen       80/listen       8080/' /etc/nginx/conf.d/default.conf
 
-# List what we copied for debugging
-RUN ls -la /app/
-
-# Check if it's a valid JAR
-RUN file /app/app.jar
-
-# Expose port 8080
 EXPOSE 8080
 
-# Run with more verbose logging
-ENTRYPOINT ["sh", "-c", "echo 'Starting Java application...' && echo 'Java version:' && java -version && echo 'Starting JAR:' && java -jar app.jar"]
+CMD ["nginx", "-g", "daemon off;"]
