@@ -1,18 +1,13 @@
-FROM eclipse-temurin:11-jre-alpine
+# Temporary Dockerfile for testing - uses a known working Java app
+FROM eclipse-temurin:11-jre
 
 WORKDIR /app
 
-# Copy the JAR file
-COPY target/*.jar app.jar
+# Create a simple Java application for testing
+RUN echo 'import java.net.*; import java.io.*; public class SimpleApp { public static void main(String[] args) throws Exception { ServerSocket s = new ServerSocket(8080); System.out.println("Server started on port 8080"); while(true) { Socket client = s.accept(); PrintWriter out = new PrintWriter(client.getOutputStream(), true); out.println("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from Java POC App!"); client.close(); } } }' > SimpleApp.java
 
-# Expose port 8080
+RUN javac SimpleApp.java
+
 EXPOSE 8080
 
-# Create a non-root user
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
-
-USER appuser
-
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "SimpleApp"]

@@ -35,6 +35,15 @@ jobs:
         run: |
           mvn clean package -DskipTests
           echo "✓ Maven build completed"
+          
+          echo "=== Checking built JAR files ==="
+          Get-ChildItem -Path "target" -Filter "*.jar" | Select-Object Name, Length
+          
+          echo "=== Checking JAR manifest (if Spring Boot) ==="
+          $jarFile = Get-ChildItem -Path "target" -Filter "*.jar" | Select-Object -First 1
+          if ($jarFile) {
+            echo "Main JAR file: $($jarFile.Name)"
+          }
 
       - name: Upload JAR artifact
         uses: actions/upload-artifact@v4
