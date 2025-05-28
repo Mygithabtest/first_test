@@ -1,13 +1,18 @@
-# Temporary Dockerfile for testing - uses a known working Java app
 FROM eclipse-temurin:11-jre
 
 WORKDIR /app
 
-# Create a simple Java application for testing
-RUN echo 'import java.net.*; import java.io.*; public class SimpleApp { public static void main(String[] args) throws Exception { ServerSocket s = new ServerSocket(8080); System.out.println("Server started on port 8080"); while(true) { Socket client = s.accept(); PrintWriter out = new PrintWriter(client.getOutputStream(), true); out.println("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from Java POC App!"); client.close(); } } }' > SimpleApp.java
+# Copy the JAR file
+COPY target/*.jar app.jar
 
-RUN javac SimpleApp.java
+# List what we copied for debugging
+RUN ls -la /app/
 
+# Check if it's a valid JAR
+RUN file /app/app.jar
+
+# Expose port 8080
 EXPOSE 8080
 
-ENTRYPOINT ["java", "SimpleApp"]
+# Run with more verbose logging
+ENTRYPOINT ["sh", "-c", "echo 'Starting Java application...' && echo 'Java version:' && java -version && echo 'Starting JAR:' && java -jar app.jar"]
