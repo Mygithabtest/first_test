@@ -1,6 +1,6 @@
 replicaCount: 1
 image:
-  repository: bitnami/nginx
+  repository: ghcr.io/mygithabtest/hello-github-test
   tag: latest
   pullPolicy: Always
 service:

@@ -5,9 +5,14 @@ on:
     branches: [ main, feature/*, github-pipeline ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   APP_NAME: 'hello-java-github'
-  DOCKERHUB_REPO: 'hello-java-app'
+  REGISTRY: 'ghcr.io'
+  IMAGE_NAME: 'hello-github-test'
 
 jobs:
   build:
@@ -51,17 +56,18 @@ jobs:
           name: java-app-${{ github.run_number }}
           path: target
 
-      - name: Login to DockerHub
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
         env:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
-          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}:$VERSION"
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
           docker build -t $IMAGE .
           docker push $IMAGE
 
@@ -78,7 +84,7 @@ jobs:
       - name: Deploy with Helm
         env:
           VERSION: ${{ needs.build.outputs.version }}
-          IMAGE: "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}"
+          IMAGE: "${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}"
         run: |
           & "C:\actions-runner\tools\helm.exe" upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
             --namespace azuredeploytest `
