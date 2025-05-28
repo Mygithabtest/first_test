@@ -1,11 +1,24 @@
+FROM alpine:latest
 
-FROM nginx:alpine
+RUN apk add --no-cache python3
 
-RUN echo '<html><head><title>GitHub Actions POC Success</title></head><body style="font-family: Arial; text-align: center; margin-top: 100px;"><h1 style="color: green;">🎉 GitHub Actions POC Successful!</h1><h2>GitLab → GitHub Actions Migration</h2><p><strong>Pipeline Components Working:</strong></p><ul style="display: inline-block; text-align: left;"><li>✅ Java Build (Windows Self-hosted Runner)</li><li>✅ Docker Build & Push (GitHub Linux Runner)</li><li>✅ Kubernetes Deployment (Windows Self-hosted Runner)</li><li>✅ Helm Chart Deployment</li><li>✅ DockerHub Integration</li><li>✅ Resource Management</li></ul><p><strong>Image:</strong> teegawende/hello-java-app:BUILD_VERSION</p><p><strong>Namespace:</strong> azuredeploytest</p><p style="margin-top: 50px; color: #666;">Complete CI/CD pipeline demonstrated successfully!</p></body></html>' > /usr/share/nginx/html/index.html
+RUN echo 'import http.server' > /app.py && \
+    echo 'import socketserver' >> /app.py && \
+    echo 'PORT = 8080' >> /app.py && \
+    echo 'class Handler(http.server.SimpleHTTPRequestHandler):' >> /app.py && \
+    echo '    def do_GET(self):' >> /app.py && \
+    echo '        self.send_response(200)' >> /app.py && \
+    echo '        self.send_header("Content-type", "text/html")' >> /app.py && \
+    echo '        self.end_headers()' >> /app.py && \
+    echo '        html = "<h1>GitHub Actions POC Success!</h1><p>Complete CI/CD pipeline working!</p>"' >> /app.py && \
+    echo '        self.wfile.write(html.encode())' >> /app.py && \
+    echo 'with socketserver.TCPServer(("", PORT), Handler) as httpd:' >> /app.py && \
+    echo '    print("Server running on port", PORT)' >> /app.py && \
+    echo '    httpd.serve_forever()' >> /app.py
 
-RUN sed -i 's/listen       80/listen       8080/' /etc/nginx/conf.d/default.conf
-RUN sed -i 's/listen  \[::\]:80/listen  [::]:8080/' /etc/nginx/conf.d/default.conf
+RUN addgroup -g 1001 appgroup && adduser -u 1001 -D appuser -G appgroup
+USER appuser
 
 EXPOSE 8080
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["python3", "/app.py"]
