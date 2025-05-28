@@ -105,6 +105,13 @@ jobs:
           & "C:\actions-runner\tools\kubectl.exe" --kubeconfig="kubeconfig.yaml" cluster-info
           echo "✓ Kubernetes configured"
 
+      - name: Cleanup Previous Deployment
+        run: |
+          echo "=== Cleaning up any previous deployment ==="
+          & "C:\actions-runner\tools\helm.exe" uninstall ${{ env.APP_NAME }} -n azuredeploytest --ignore-not-found --kubeconfig kubeconfig.yaml
+          Start-Sleep -Seconds 10
+          echo "✓ Cleanup completed"
+
       - name: Deploy to Development
         env:
           VERSION: ${{ needs.build-java.outputs.version }}
