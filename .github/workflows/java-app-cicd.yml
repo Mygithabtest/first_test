@@ -10,9 +10,11 @@ env:
   DOCKERHUB_REPO: 'hello-java-app'
 
 jobs:
-  build-and-deploy:
-    name: Build, Push and Deploy
+  build:
+    name: Build Java App
     runs-on: [self-hosted, Windows, X64]
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,24 +32,52 @@ jobs:
       - name: Build with Maven
         run: mvn clean package -DskipTests
 
-      - name: Login to DockerHub
-        run: |
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-app-${{ github.run_number }}
+          path: target/*.jar
 
-      - name: Build and push Docker image
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: java-app-${{ github.run_number }}
+          path: target
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
-          $IMAGE = "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}:$env:VERSION"
+          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}:$VERSION"
           docker build -t $IMAGE .
           docker push $IMAGE
+
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: [self-hosted, Windows, X64]
+    needs: [build, docker]
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Configure Kubernetes
         run: echo "${{ secrets.KUBECONFIG_CONTENT }}" | Out-File -FilePath kubeconfig.yaml -Encoding utf8
 
       - name: Deploy with Helm
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.build.outputs.version }}
           IMAGE: "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}"
         run: |
           & "C:\actions-runner\tools\helm.exe" upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
