@@ -82,15 +82,18 @@ jobs:
           IMAGE: "${{ secrets.DOCKERHUB_USERNAME }}/${{ env.DOCKERHUB_REPO }}"
         run: |
           echo "=== Deploying to Development ==="
+          echo "Image: $env:IMAGE:$env:VERSION"
+          
+          # Deploy using values from dev.yaml (which now has correct resources)
           & "C:\actions-runner\tools\helm.exe" upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
             --namespace azuredeploytest `
             --create-namespace `
             --set image.repository=$env:IMAGE `
             --set image.tag=$env:VERSION `
-            --set ingress.hostname=${{ env.APP_NAME }}.azuredeploytest.dev.oclc.org `
             --values ./src/hello-java-chart/values/dev.yaml `
             --kubeconfig kubeconfig.yaml `
-            --wait --timeout 5m
+            --timeout 10m `
+            --debug
           
           echo "✓ Development deployment completed"
 

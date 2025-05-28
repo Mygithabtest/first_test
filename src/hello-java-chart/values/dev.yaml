@@ -2,17 +2,17 @@ replicaCount: 1
 image:
   repository: bitnami/nginx
   tag: latest
-  pullPolicy: IfNotPresent
+  pullPolicy: Always  # Changed to Always for development to get latest images
 service:
   type: ClusterIP
   port: 8080
 ingress:
   enabled: true
-  hostname: hello-java.azuredeploytest.dev.oclc.org
+  hostname: hello-java-github.azuredeploytest.dev.oclc.org  # Changed to avoid conflict
 resources:
   limits:
-    cpu: 500m
-    memory: 512Mi
+    cpu: 200m      # Reduced from 500m to fit quota
+    memory: 256Mi  # Reduced from 512Mi to be conservative
   requests:
-    cpu: 100m
-    memory: 128Mi
+    cpu: 100m      # Kept the same (this was already good)
+    memory: 128Mi  # Kept the same (this was already good)

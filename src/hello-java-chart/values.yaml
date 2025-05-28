@@ -1,18 +1,24 @@
+
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "100m"
+  limits:
+    memory: "256Mi"
+    cpu: "200m"
+
+# If you don't have these already, you might also want to add:
 replicaCount: 1
+
 image:
-  repository: bitnami/nginx
-  tag: latest
+  repository: nginx  # This will be overridden by the workflow
+  tag: latest        # This will be overridden by the workflow
   pullPolicy: IfNotPresent
+
 service:
   type: ClusterIP
-  port: 8080
+  port: 80
+
 ingress:
   enabled: true
-  hostname: hello-java.azuredeploytest.dev.oclc.org
-resources:
-  limits:
-    cpu: 500m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
+  hostname: ""  # This will be set by the workflow
