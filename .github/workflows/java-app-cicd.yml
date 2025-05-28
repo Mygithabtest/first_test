@@ -68,6 +68,7 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
+          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
           docker build -t $IMAGE .
           docker push $IMAGE
 
@@ -86,10 +87,11 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
           IMAGE: "${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}"
         run: |
+          $IMAGE_LOWER = $env:IMAGE.ToLower()
           & "C:\actions-runner\tools\helm.exe" upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
             --namespace azuredeploytest `
             --create-namespace `
-            --set image.repository=$env:IMAGE `
+            --set image.repository=$IMAGE_LOWER `
             --set image.tag=$env:VERSION `
             --values ./src/hello-java-chart/values/dev.yaml `
             --kubeconfig kubeconfig.yaml `
