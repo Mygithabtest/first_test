@@ -2,7 +2,7 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop, feature/* ]
+    branches: [ main, develop,github-pipeline, feature/* ]
   workflow_dispatch:
 
 permissions:
@@ -137,7 +137,7 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Prepare release documentation
+      - name: Build documentation
         env:
           VERSION: ${{ needs.build.outputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}
@@ -146,20 +146,8 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          # Copy docs folder to _site
-          cp -r docs/ _site/
-          
-          # Replace placeholders in HTML files with actual values
-          find _site -name "*.html" -type f -exec sed -i "s/{{VERSION}}/$VERSION/g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s/{{BUILD_NUMBER}}/$BUILD_NUMBER/g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s/{{COMMIT_SHA}}/$COMMIT_SHA/g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s/{{ACTOR}}/$ACTOR/g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s|{{REPOSITORY}}|$REPOSITORY|g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s/{{RUN_ID}}/$RUN_ID/g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s/{{TIMESTAMP}}/$(date -u +"%Y-%m-%d %H:%M:%S UTC")/g" {} \;
-          
-          echo "Documentation prepared for version $VERSION"
-          ls -la _site/
+          chmod +x docs/build-docs.sh
+          ./docs/build-docs.sh
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -196,7 +184,6 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # Create GitHub release (this also creates the tag)
           gh release create "v$VERSION" \
             --title "Release $VERSION" \
             --notes "🚀 **Release $VERSION**
