@@ -2,12 +2,14 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, feature/*, github-pipeline ]
+    branches: [ main, develop, feature/* ]
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
+  pages: write
+  id-token: write
 
 env:
   APP_NAME: 'hello-java-github'
@@ -20,6 +22,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     outputs:
       version: ${{ steps.version.outputs.version }}
+      is-snapshot: ${{ steps.version.outputs.is-snapshot }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +34,15 @@ jobs:
       - name: Set version
         id: version
         run: |
-          $VERSION = "1.0.${{ github.run_number }}"
+          if ("${{ github.ref_name }}" -eq "main") {
+            $VERSION = "1.0.${{ github.run_number }}"
+            echo "is-snapshot=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Release build: $VERSION"
+          } else {
+            $VERSION = "1.0.${{ github.run_number }}-SNAPSHOT"
+            echo "is-snapshot=true" >> $env:GITHUB_OUTPUT
+            Write-Host "Snapshot build: $VERSION"
+          }
           echo "version=$VERSION" >> $env:GITHUB_OUTPUT
 
       - name: Build with Maven
@@ -47,6 +58,7 @@ jobs:
     name: Build Docker Image
     runs-on: ubuntu-latest
     needs: build
+    if: needs.build.outputs.is-snapshot == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -63,20 +75,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push snapshot image
         env:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
           IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
-          echo "Building and pushing image: $IMAGE"
+          echo "Building and pushing snapshot image: $IMAGE"
           docker build -t $IMAGE .
           docker push $IMAGE
 
-  deploy:
-    name: Deploy to Kubernetes
+  deploy-development:
+    name: Deploy to Development
     runs-on: [self-hosted, Windows, X64]
     needs: [build, docker]
+    if: needs.build.outputs.is-snapshot == 'true'
     environment: development
     steps:
       - uses: actions/checkout@v4
@@ -84,21 +97,19 @@ jobs:
       - name: Configure Kubernetes
         run: echo "${{ secrets.KUBECONFIG_CONTENT }}" | Out-File -FilePath kubeconfig.yaml -Encoding utf8
 
-      - name: Deploy with Helm
+      - name: Deploy to Rancher with Helm
         env:
           VERSION: ${{ needs.build.outputs.version }}
           IMAGE: "${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}"
         run: |
           $IMAGE_LOWER = $env:IMAGE.ToLower()
           $FULL_IMAGE = "${IMAGE_LOWER}:$($env:VERSION)"
-          Write-Host "Deploying image: $FULL_IMAGE"
+          Write-Host "Deploying snapshot image to development: $FULL_IMAGE"
           
           $helmCmd = "C:\actions-runner\tools\helm.exe"
           if (!(Test-Path $helmCmd)) {
             $helmCmd = "helm"
           }
-          
-          Write-Host "Using helm: $helmCmd"
           
           & $helmCmd upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
             --namespace azuredeploytest `
@@ -108,3 +119,101 @@ jobs:
             --values ./src/hello-java-chart/values/dev.yaml `
             --kubeconfig kubeconfig.yaml `
             --wait --timeout 5m
+
+  build-release:
+    name: Build Release Documentation
+    runs-on: ubuntu-latest
+    needs: build
+    if: needs.build.outputs.is-snapshot == 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: java-app-${{ github.run_number }}
+          path: target
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Prepare release documentation
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          COMMIT_SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          # Copy docs folder to _site
+          cp -r docs/ _site/
+          
+          # Replace placeholders in HTML files with actual values
+          find _site -name "*.html" -type f -exec sed -i "s/{{VERSION}}/$VERSION/g" {} \;
+          find _site -name "*.html" -type f -exec sed -i "s/{{BUILD_NUMBER}}/$BUILD_NUMBER/g" {} \;
+          find _site -name "*.html" -type f -exec sed -i "s/{{COMMIT_SHA}}/$COMMIT_SHA/g" {} \;
+          find _site -name "*.html" -type f -exec sed -i "s/{{ACTOR}}/$ACTOR/g" {} \;
+          find _site -name "*.html" -type f -exec sed -i "s|{{REPOSITORY}}|$REPOSITORY|g" {} \;
+          find _site -name "*.html" -type f -exec sed -i "s/{{RUN_ID}}/$RUN_ID/g" {} \;
+          find _site -name "*.html" -type f -exec sed -i "s/{{TIMESTAMP}}/$(date -u +"%Y-%m-%d %H:%M:%S UTC")/g" {} \;
+          
+          echo "Documentation prepared for version $VERSION"
+          ls -la _site/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build-release
+    if: needs.build.outputs.is-snapshot == 'false'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build, build-release]
+    if: needs.build.outputs.is-snapshot == 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: java-app-${{ github.run_number }}
+          path: target
+
+      - name: Create Release
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create git tag
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          
+          # Create GitHub release
+          gh release create "v$VERSION" \
+            --title "Release $VERSION" \
+            --notes "🚀 **Release $VERSION**
+
+          ## 📦 What's Included
+          - ✅ JAR artifact: \`target/hello-java-app.jar\`
+          - ✅ Documentation: [GitHub Pages](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)
+          - ✅ Container: \`ghcr.io/${{ github.repository_owner }}/hello-github-test:$VERSION\`
+
+          ## 🔗 Links
+          - 📁 [Source Code](https://github.com/${{ github.repository }})
+          - ⚙️ [Build Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          - 📚 [Full Documentation](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)
+
+          Built from commit: \`${{ github.sha }}\`" \
+            target/*.jar

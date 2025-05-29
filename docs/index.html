@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hello Java App - Release {{VERSION}}</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="container">
+    <header class="header">
+        <h1>🚀 Hello Java App</h1>
+        <p class="version">Release Version: {{VERSION}}</p>
+        <p class="timestamp">Built on: {{TIMESTAMP}}</p>
+    </header>
+
+    <main>
+        <section class="section">
+            <h2>📦 Release Information</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <strong>Version:</strong> {{VERSION}}
+                </div>
+                <div class="info-item">
+                    <strong>Build Number:</strong> #{{BUILD_NUMBER}}
+                </div>
+                <div class="info-item">
+                    <strong>Commit:</strong> <code>{{COMMIT_SHA}}</code>
+                </div>
+                <div class="info-item">
+                    <strong>Released by:</strong> {{ACTOR}}
+                </div>
+            </div>
+            <p>This is a production release build from the <strong>main</strong> branch.</p>
+        </section>
+
+        <section class="section">
+            <h2>📋 Build Artifacts</h2>
+            <div class="artifact-list">
+                <div class="artifact-item">
+                    <span class="artifact-icon">📄</span>
+                    <span class="artifact-name">JAR File</span>
+                    <span class="artifact-desc">Executable Java application</span>
+                </div>
+                <div class="artifact-item">
+                    <span class="artifact-icon">🐳</span>
+                    <span class="artifact-name">Docker Image</span>
+                    <span class="artifact-desc">Available in GitHub Container Registry</span>
+                </div>
+                <div class="artifact-item">
+                    <span class="artifact-icon">📚</span>
+                    <span class="artifact-name">Documentation</span>
+                    <span class="artifact-desc">This GitHub Pages site</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>🔗 Quick Links</h2>
+            <div class="links-grid">
+                <a href="https://github.com/{{REPOSITORY}}" target="_blank" class="link-card">
+                    <div class="link-icon">📁</div>
+                    <div class="link-title">Source Code</div>
+                    <div class="link-desc">View the repository</div>
+                </a>
+                <a href="https://github.com/{{REPOSITORY}}/actions/runs/{{RUN_ID}}" target="_blank" class="link-card">
+                    <div class="link-icon">⚙️</div>
+                    <div class="link-title">Build Details</div>
+                    <div class="link-desc">View this build</div>
+                </a>
+                <a href="https://github.com/{{REPOSITORY}}/packages" target="_blank" class="link-card">
+                    <div class="link-icon">📦</div>
+                    <div class="link-title">Packages</div>
+                    <div class="link-desc">Container registry</div>
+                </a>
+                <a href="changelog.html" class="link-card">
+                    <div class="link-icon">📝</div>
+                    <div class="link-title">Changelog</div>
+                    <div class="link-desc">What's new</div>
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Generated automatically by GitHub Actions</p>
+    </footer>
+</div>
+</body>
+</html>
