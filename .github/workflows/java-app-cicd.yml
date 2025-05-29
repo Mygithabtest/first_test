@@ -89,7 +89,8 @@ jobs:
           IMAGE: "${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}"
         run: |
           $IMAGE_LOWER = $env:IMAGE.ToLower()
-          Write-Host "Deploying image: $IMAGE_LOWER:$env:VERSION"
+          $FULL_IMAGE = "${IMAGE_LOWER}:$($env:VERSION)"
+          Write-Host "Deploying image: $FULL_IMAGE"
           
           # Use full path to helm
           $helmCmd = "C:\actions-runner\tools\helm.exe"
