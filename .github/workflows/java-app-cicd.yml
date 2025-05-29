@@ -83,17 +83,6 @@ jobs:
       - name: Configure Kubernetes
         run: echo "${{ secrets.KUBECONFIG_CONTENT }}" | Out-File -FilePath kubeconfig.yaml -Encoding utf8
 
-      - name: Create or Update Image Pull Secret
-        run: |
-          Write-Host "Creating/updating image pull secret for GitHub Container Registry..."
-          & kubectl create secret docker-registry ghcr-secret `
-            --docker-server=ghcr.io `
-            --docker-username=${{ github.actor }} `
-            --docker-password=${{ secrets.GITHUB_TOKEN }} `
-            --namespace=azuredeploytest `
-            --kubeconfig kubeconfig.yaml `
-            --dry-run=client -o yaml | & kubectl apply -f - --kubeconfig kubeconfig.yaml
-
       - name: Deploy with Helm
         env:
           VERSION: ${{ needs.build.outputs.version }}
@@ -102,7 +91,15 @@ jobs:
           $IMAGE_LOWER = $env:IMAGE.ToLower()
           Write-Host "Deploying image: $IMAGE_LOWER:$env:VERSION"
           
-          & "C:\actions-runner\tools\helm.exe" upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
+          # Use full path to helm
+          $helmCmd = "C:\actions-runner\tools\helm.exe"
+          if (!(Test-Path $helmCmd)) {
+            $helmCmd = "helm"
+          }
+          
+          Write-Host "Using helm: $helmCmd"
+          
+          & $helmCmd upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
             --namespace azuredeploytest `
             --create-namespace `
             --set image.repository=$IMAGE_LOWER `
@@ -117,19 +114,23 @@ jobs:
         if: failure()
         run: |
           Write-Host "Deployment failed. Gathering debug information..."
+          
+          # Use absolute path to kubectl
+          $kubectlPath = "C:\Program Files\kubectl\kubectl.exe"
+          
           Write-Host "=== Pods Status ==="
-          & kubectl get pods -n azuredeploytest --kubeconfig kubeconfig.yaml
+          & $kubectlPath get pods -n azuredeploytest --kubeconfig kubeconfig.yaml
           Write-Host "=== Pod Descriptions ==="
-          & kubectl describe pods -n azuredeploytest --kubeconfig kubeconfig.yaml
+          & $kubectlPath describe pods -n azuredeploytest --kubeconfig kubeconfig.yaml
           Write-Host "=== Recent Events ==="
-          & kubectl get events -n azuredeploytest --sort-by='.lastTimestamp' --kubeconfig kubeconfig.yaml
+          & $kubectlPath get events -n azuredeploytest --sort-by='.lastTimestamp' --kubeconfig kubeconfig.yaml
           Write-Host "=== Pod Logs ==="
-          $pods = & kubectl get pods -n azuredeploytest --kubeconfig kubeconfig.yaml -o jsonpath='{.items[*].metadata.name}'
+          $pods = & $kubectlPath get pods -n azuredeploytest --kubeconfig kubeconfig.yaml -o jsonpath='{.items[*].metadata.name}'
           if ($pods) {
             foreach ($pod in $pods.Split(' ')) {
               if ($pod -like "*${{ env.APP_NAME }}*") {
                 Write-Host "--- Logs for pod: $pod ---"
-                & kubectl logs $pod -n azuredeploytest --kubeconfig kubeconfig.yaml --previous=false
+                & $kubectlPath logs $pod -n azuredeploytest --kubeconfig kubeconfig.yaml --previous=false
               }
             }
           }
