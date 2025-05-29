@@ -92,7 +92,6 @@ jobs:
           $FULL_IMAGE = "${IMAGE_LOWER}:$($env:VERSION)"
           Write-Host "Deploying image: $FULL_IMAGE"
           
-          # Use full path to helm
           $helmCmd = "C:\actions-runner\tools\helm.exe"
           if (!(Test-Path $helmCmd)) {
             $helmCmd = "helm"
@@ -107,54 +106,4 @@ jobs:
             --set image.tag=$env:VERSION `
             --values ./src/hello-java-chart/values/dev.yaml `
             --kubeconfig kubeconfig.yaml `
-            --wait --timeout 5m `
-            --debug
-
-      - name: Quick Pod Status Check (on deployment timeout)
-        if: failure()
-        run: |
-          Write-Host "Checking pod status after deployment timeout..."
-          $kubectlPath = "C:\Program Files\kubectl\kubectl.exe"
-          
-          Write-Host "=== Current Pods ==="
-          & $kubectlPath get pods -n azuredeploytest --kubeconfig kubeconfig.yaml -o wide
-          
-          Write-Host "=== Pod Events ==="
-          & $kubectlPath get events -n azuredeploytest --sort-by='.lastTimestamp' --kubeconfig kubeconfig.yaml --field-selector involvedObject.kind=Pod | Select-Object -Last 10
-          
-          Write-Host "=== Pod Descriptions for Failed Pods ==="
-          $failedPods = & $kubectlPath get pods -n azuredeploytest --kubeconfig kubeconfig.yaml -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.phase}{"\n"}{end}' | Where-Object { $_ -notlike "*Running*" -and $_ -notlike "*Succeeded*" }
-          if ($failedPods) {
-            foreach ($line in $failedPods) {
-              $podName = $line.Split(' ')[0]
-              if ($podName -and $podName -like "*${{ env.APP_NAME }}*") {
-                Write-Host "--- Describing pod: $podName ---"
-                & $kubectlPath describe pod $podName -n azuredeploytest --kubeconfig kubeconfig.yaml
-              }
-            }
-          }
-
-      - name: Debug Deployment (on failure)
-        if: failure()
-        run: |
-          Write-Host "Deployment failed. Gathering debug information..."
-          
-          # Use absolute path to kubectl
-          $kubectlPath = "C:\Program Files\kubectl\kubectl.exe"
-          
-          Write-Host "=== Pods Status ==="
-          & $kubectlPath get pods -n azuredeploytest --kubeconfig kubeconfig.yaml
-          Write-Host "=== Pod Descriptions ==="
-          & $kubectlPath describe pods -n azuredeploytest --kubeconfig kubeconfig.yaml
-          Write-Host "=== Recent Events ==="
-          & $kubectlPath get events -n azuredeploytest --sort-by='.lastTimestamp' --kubeconfig kubeconfig.yaml
-          Write-Host "=== Pod Logs ==="
-          $pods = & $kubectlPath get pods -n azuredeploytest --kubeconfig kubeconfig.yaml -o jsonpath='{.items[*].metadata.name}'
-          if ($pods) {
-            foreach ($pod in $pods.Split(' ')) {
-              if ($pod -like "*${{ env.APP_NAME }}*") {
-                Write-Host "--- Logs for pod: $pod ---"
-                & $kubectlPath logs $pod -n azuredeploytest --kubeconfig kubeconfig.yaml --previous=false
-              }
-            }
-          }
+            --wait --timeout 5m
