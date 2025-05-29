@@ -1,20 +1,26 @@
 replicaCount: 1
+
 image:
   repository: ghcr.io/mygithabtest/hello-github-test
   tag: latest
   pullPolicy: Always
+
+# Image pull secrets for GitHub Container Registry authentication
 imagePullSecrets:
   - name: ghcr-secret
+
 service:
   type: ClusterIP
   port: 8080
+
 ingress:
   enabled: true
   hostname: hello-java-github.azuredeploytest.dev.oclc.org
+
 resources:
   limits:
-    cpu: 200m
+    cpu: 100m    # Reduced from 200m to fit within quota
     memory: 256Mi
   requests:
-    cpu: 100m
+    cpu: 50m     # Reduced from 100m
     memory: 128Mi

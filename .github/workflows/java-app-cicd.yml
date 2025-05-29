@@ -105,7 +105,6 @@ jobs:
             --create-namespace `
             --set image.repository=$IMAGE_LOWER `
             --set image.tag=$env:VERSION `
-            --set imagePullSecrets[0].name=ghcr-secret `
             --values ./src/hello-java-chart/values/dev.yaml `
             --kubeconfig kubeconfig.yaml `
             --wait --timeout 5m `
