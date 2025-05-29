@@ -1,178 +1,110 @@
-name: Java Application POC
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, github-pipeline ]
+    branches: [ main, feature/*, github-pipeline ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 env:
-  APP_NAME: 'hello-java-app'
+  APP_NAME: 'hello-java-github'
+  REGISTRY: 'ghcr.io'
+  IMAGE_NAME: 'hello-github-test'
 
 jobs:
   build:
-    name: Build Java Application
-    runs-on: self-hosted
+    name: Build Java App
+    runs-on: [self-hosted, Windows, X64]
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Set up Java and Maven paths
+      - name: Set up Java and Maven
         run: |
           echo "C:\Program Files\Java\jdk-21.0.7\bin" >> $env:GITHUB_PATH
           echo "C:\Program Files\Apache\apache-maven-3.9.9\bin" >> $env:GITHUB_PATH
 
-      - name: Determine version
+      - name: Set version
         id: version
         run: |
           $VERSION = "1.0.${{ github.run_number }}"
           echo "version=$VERSION" >> $env:GITHUB_OUTPUT
-          echo "Building version: $VERSION"
 
       - name: Build with Maven
-        run: |
-          echo "Building Java application..."
-          mvn clean compile -DskipTests
-          echo "Build completed successfully"
+        run: mvn clean package -DskipTests
 
-      - name: Run tests
-        run: |
-          echo "Running tests..."
-          mvn test
-          echo "Tests completed"
-
-      - name: Package application
-        run: |
-          echo "Packaging application..."
-          mvn package -DskipTests
-          echo "Packaging completed"
-
-      - name: Upload build artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: java-application
+          name: java-app-${{ github.run_number }}
           path: target/*.jar
-          retention-days: 30
 
-  test:
-    name: Additional Testing
-    runs-on: self-hosted
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Java and Maven paths
-        run: |
-          echo "C:\Program Files\Java\jdk-21.0.7\bin" >> $env:GITHUB_PATH
-          echo "C:\Program Files\Apache\apache-maven-3.9.9\bin" >> $env:GITHUB_PATH
-
-      - name: Download build artifacts
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: java-application
+          name: java-app-${{ github.run_number }}
           path: target
 
-      - name: Integration tests
-        run: |
-          echo "Running integration tests..."
-          echo "Integration tests passed"
-
-      - name: Security scan simulation
-        run: |
-          echo "Running security scans..."
-          echo "Security scan completed"
-
-  release:
-    name: Create Release
-    runs-on: self-hosted
-    needs: [build, test]
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          name: java-application
-          path: artifacts
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create GitHub Release
-        uses: actions/create-release@v1
+      - name: Build and push
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ needs.build.outputs.version }}
-          release_name: Release v${{ needs.build.outputs.version }}
-          body: "Automated release from GitHub Actions POC"
-          draft: false
-          prerelease: false
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
+          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          echo "Building and pushing image: $IMAGE"
+          docker build -t $IMAGE .
+          docker push $IMAGE
 
-  deploy-dev:
-    name: Deploy to Development
-    runs-on: self-hosted
-    needs: [build, test]
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: [self-hosted, Windows, X64]
+    needs: [build, docker]
     environment: development
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: java-application
-          path: deployment-artifacts
+      - name: Configure Kubernetes
+        run: echo "${{ secrets.KUBECONFIG_CONTENT }}" | Out-File -FilePath kubeconfig.yaml -Encoding utf8
 
-      - name: Verify Helm chart
+      - name: Deploy with Helm
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          IMAGE: "${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}"
         run: |
-          echo "Verifying Helm chart structure..."
-          if (Test-Path "src\hello-java-chart") {
-            echo "Helm chart found"
-            Get-ChildItem -Path "src\hello-java-chart" -Recurse | Select-Object Name, FullName
-          } else {
-            echo "Helm chart not found"
+          $IMAGE_LOWER = $env:IMAGE.ToLower()
+          $FULL_IMAGE = "${IMAGE_LOWER}:$($env:VERSION)"
+          Write-Host "Deploying image: $FULL_IMAGE"
+          
+          $helmCmd = "C:\actions-runner\tools\helm.exe"
+          if (!(Test-Path $helmCmd)) {
+            $helmCmd = "helm"
           }
-
-      - name: Simulate deployment
-        env:
-          VERSION: ${{ needs.build.outputs.version }}
-          NAMESPACE: 'development'
-        run: |
-          echo "=== Deployment Simulation ==="
-          echo "Deploying version: $env:VERSION"
-          echo "Target namespace: $env:NAMESPACE"
-          echo "Application: ${{ env.APP_NAME }}"
-          echo "Artifacts to deploy:"
-          Get-ChildItem -Path "deployment-artifacts" | Select-Object Name, Length
-          echo "Deployment simulation completed successfully"
-
-  deploy-prod:
-    name: Deploy to Production
-    runs-on: self-hosted
-    needs: [deploy-dev, release]
-    environment: production
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: java-application
-          path: deployment-artifacts
-
-      - name: Production deployment
-        env:
-          VERSION: ${{ needs.build.outputs.version }}
-          NAMESPACE: 'production'
-        run: |
-          echo "=== Production Deployment ==="
-          echo "Deploying version: $env:VERSION to PRODUCTION"
-          echo "This requires manual approval via GitHub Environments"
-          echo "Production deployment completed"
-          echo "Application is live in production!"
+          
+          Write-Host "Using helm: $helmCmd"
+          
+          & $helmCmd upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
+            --namespace azuredeploytest `
+            --create-namespace `
+            --set image.repository=$IMAGE_LOWER `
+            --set image.tag=$env:VERSION `
+            --values ./src/hello-java-chart/values/dev.yaml `
+            --kubeconfig kubeconfig.yaml `
+            --wait --timeout 5m
