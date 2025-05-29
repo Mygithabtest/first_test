@@ -77,6 +77,7 @@ jobs:
     name: Deploy to Kubernetes
     runs-on: [self-hosted, Windows, X64]
     needs: [build, docker]
+    environment: development
     steps:
       - uses: actions/checkout@v4
 
