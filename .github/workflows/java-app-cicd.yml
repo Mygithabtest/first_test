@@ -104,17 +104,30 @@ jobs:
       - name: Install Docker Scout CLI
         run: |
           curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh -s -- -b /usr/local/bin
+          docker scout version
 
-      - name: Run Docker Scout quickview scan
+      - name: Scan image and fail if critical/high CVEs are found
         env:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           IMAGE="ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
           IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
-          echo "Scanning image with Docker Scout: $IMAGE"
-          docker scout quickview $IMAGE \
-            --only-severities critical,high \
-            --exit-code
+
+          echo "🔍 Scanning image: $IMAGE"
+          docker scout cves $IMAGE --format json > scout-report.json
+
+          echo "🧪 Checking for critical or high vulnerabilities..."
+          COUNT=$(jq '[.cves[] | select(.severity=="critical" or .severity=="high")] | length' scout-report.json)
+          echo "Found $COUNT high/critical vulnerabilities"
+
+          cat scout-report.json | jq '.cves[] | select(.severity=="critical" or .severity=="high") | {id, severity, package, version, fixVersion}'
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "❌ Build failed due to $COUNT high/critical vulnerabilities"
+            exit 1
+          else
+            echo "✅ No critical/high vulnerabilities found"
+          fi
 
   deploy-development:
     name: Deploy to Development
@@ -136,12 +149,12 @@ jobs:
           $IMAGE_LOWER = $env:IMAGE.ToLower()
           $FULL_IMAGE = "${IMAGE_LOWER}:$($env:VERSION)"
           Write-Host "Deploying snapshot image to development: $FULL_IMAGE"
-          
+
           $helmCmd = "C:\actions-runner\tools\helm.exe"
           if (!(Test-Path $helmCmd)) {
             $helmCmd = "helm"
           }
-          
+
           & $helmCmd upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
             --namespace azuredeploytest `
             --create-namespace `

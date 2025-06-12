@@ -1,130 +1,245 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Changelog - Hello Java App</title>
-    <link rel="stylesheet" href="styles.css">
-    <style>
-        .changelog-item {
-            margin-bottom: 30px;
-            border-left: 4px solid #28a745;
-            padding-left: 20px;
-        }
+name: CI/CD Pipeline
 
-        .changelog-date {
-            color: #0969da;
-            font-weight: 600;
-            font-size: 0.9rem;
-            margin-bottom: 10px;
-        }
+on:
+push:
+branches: [ main, develop, github-pipeline, feature/* ]
+workflow_dispatch:
 
-        .changelog-content h3 {
-            color: #24292f;
-            margin: 20px 0 10px 0;
-            font-size: 1.1rem;
-        }
+permissions:
+contents: read
+packages: write
+pages: write
+id-token: write
 
-        .changelog-content ul {
-            margin-left: 20px;
-            margin-bottom: 15px;
-        }
+env:
+APP_NAME: 'hello-java-github'
+REGISTRY: 'ghcr.io'
+IMAGE_NAME: 'hello-github-test'
 
-        .changelog-content li {
-            margin-bottom: 5px;
-        }
-    </style>
-</head>
-<body>
-<div class="container">
-    <header class="header">
-        <h1>📝 Changelog</h1>
-        <p class="version">Hello Java App Release History</p>
-    </header>
+jobs:
+build:
+name: Build Java App
+runs-on: [self-hosted, Windows, X64]
+outputs:
+version: ${{ steps.version.outputs.version }}
+is-snapshot: ${{ steps.version.outputs.is-snapshot }}
+steps:
+- uses: actions/checkout@v4
 
-    <main>
-        <section class="section">
-            <h2>🎉 Version {{VERSION}} (Latest)</h2>
-            <div class="changelog-item">
-                <div class="changelog-date">{{TIMESTAMP}}</div>
-                <div class="changelog-content">
-                    <h3>What's New</h3>
-                    <ul>
-                        <li>✨ Implemented GitHub Pages deployment for releases</li>
-                        <li>🔄 Added branching strategy with develop/main workflow</li>
-                        <li>🐳 Improved Docker image builds and container registry integration</li>
-                        <li>📦 Enhanced CI/CD pipeline with environment-specific deployments</li>
-                    </ul>
+- name: Set up Java and Maven
+run: |
+echo "C:\Program Files\Java\jdk-21.0.7\bin" >> $env:GITHUB_PATH
+echo "C:\Program Files\Apache\apache-maven-3.9.9\bin" >> $env:GITHUB_PATH
 
-                    <h3>🐛 Bug Fixes</h3>
-                    <ul>
-                        <li>Fixed image pull authentication issues in Kubernetes</li>
-                        <li>Resolved PowerShell syntax errors in deployment scripts</li>
-                        <li>Corrected resource quota management</li>
-                    </ul>
+- name: Set version
+id: version
+run: |
+if ("${{ github.ref_name }}" -eq "main") {
+$VERSION = "1.0.${{ github.run_number }}"
+echo "is-snapshot=false" >> $env:GITHUB_OUTPUT
+Write-Host "Release build: $VERSION"
+} else {
+$VERSION = "1.0.${{ github.run_number }}-SNAPSHOT"
+echo "is-snapshot=true" >> $env:GITHUB_OUTPUT
+Write-Host "Snapshot build: $VERSION"
+}
+echo "version=$VERSION" >> $env:GITHUB_OUTPUT
 
-                    <h3>🔧 Technical Improvements</h3>
-                    <ul>
-                        <li>Updated kubectl permissions and path handling</li>
-                        <li>Improved Helm deployment configuration</li>
-                        <li>Enhanced error handling and debugging capabilities</li>
-                    </ul>
-                </div>
-            </div>
-        </section>
+- name: Build with Maven
+run: mvn clean package -DskipTests
 
-        <section class="section">
-            <h2>📚 Previous Releases</h2>
+- name: Upload artifact
+uses: actions/upload-artifact@v4
+with:
+name: java-app-${{ github.run_number }}
+path: target/*.jar
 
-            <div class="changelog-item">
-                <div class="changelog-date">Previous versions</div>
-                <div class="changelog-content">
-                    <h3>Version 1.0.x</h3>
-                    <ul>
-                        <li>🚀 Initial release</li>
-                        <li>📱 Basic Java application functionality</li>
-                        <li>🐳 Docker containerization</li>
-                        <li>☸️ Kubernetes deployment setup</li>
-                    </ul>
-                </div>
-            </div>
-        </section>
+docker:
+name: Build Docker Image
+runs-on: ubuntu-latest
+needs: build
+if: needs.build.outputs.is-snapshot == 'true'
+steps:
+- uses: actions/checkout@v4
 
-        <section class="section">
-            <h2>🔮 Coming Soon</h2>
-            <div class="info-grid">
-                <div class="info-item">
-                    <strong>Performance Improvements:</strong> Optimizing application startup time and resource usage
-                </div>
-                <div class="info-item">
-                    <strong>Security Enhancements:</strong> Implementing additional security measures and vulnerability scanning
-                </div>
-                <div class="info-item">
-                    <strong>Monitoring:</strong> Adding comprehensive logging and monitoring capabilities
-                </div>
-                <div class="info-item">
-                    <strong>Testing:</strong> Expanding test coverage and automated testing
-                </div>
-            </div>
-        </section>
+- name: Download artifact
+uses: actions/download-artifact@v4
+with:
+name: java-app-${{ github.run_number }}
+path: target
 
-        <div class="links-grid">
-            <a href="index.html" class="link-card">
-                <div class="link-icon">🏠</div>
-                <div class="link-title">Back to Home</div>
-                <div class="link-desc">Return to main page</div>
-            </a>
-            <a href="https://github.com/{{REPOSITORY}}/releases" target="_blank" class="link-card">
-                <div class="link-icon">🏷️</div>
-                <div class="link-title">All Releases</div>
-                <div class="link-desc">View GitHub releases</div>
-            </a>
-        </div>
-    </main>
+- name: Login to GitHub Container Registry
+uses: docker/login-action@v3
+with:
+registry: ghcr.io
+username: ${{ github.actor }}
+password: ${{ secrets.GITHUB_TOKEN }}
 
-    <footer class="footer">
-        <p>Generated automatically by GitHub Actions • Build #{{BUILD_NUMBER}}</p>
-    </footer>
-</div>
-</body>
-</html>
+- name: Build and push snapshot image
+env:
+VERSION: ${{ needs.build.outputs.version }}
+run: |
+IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
+IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+echo "Building and pushing snapshot image: $IMAGE"
+docker build -t $IMAGE .
+docker push $IMAGE
+
+docker-scout:
+name: Docker Scout Vulnerability Scan
+runs-on: ubuntu-latest
+needs: docker
+if: needs.build.outputs.is-snapshot == 'true'
+steps:
+- name: Checkout source
+uses: actions/checkout@v4
+
+- name: Login to GitHub Container Registry
+uses: docker/login-action@v3
+with:
+registry: ghcr.io
+username: ${{ github.actor }}
+password: ${{ secrets.GITHUB_TOKEN }}
+
+- name: Install Docker Scout CLI
+run: |
+curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh -s -- -b /usr/local/bin
+docker scout version
+
+- name: Scan image and fail if critical/high CVEs are found
+env:
+VERSION: ${{ needs.build.outputs.version }}
+run: |
+IMAGE="ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
+IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+
+echo "🔍 Scanning image: $IMAGE"
+docker scout cves $IMAGE --format json > scout-report.json
+
+echo "🧪 Checking for critical or high vulnerabilities..."
+COUNT=$(jq '[.cves[] | select(.severity=="critical" or .severity=="high")] | length' scout-report.json)
+echo "Found $COUNT high/critical vulnerabilities"
+
+cat scout-report.json | jq '.cves[] | select(.severity=="critical" or .severity=="high") | {id, severity, package, version, fixVersion}'
+
+if [ "$COUNT" -gt 0 ]; then
+echo "❌ Build failed due to $COUNT high/critical vulnerabilities"
+exit 1
+else
+echo "✅ No critical/high vulnerabilities found"
+fi
+
+deploy-development:
+name: Deploy to Development
+runs-on: [self-hosted, Windows, X64]
+needs: [build, docker, docker-scout]
+if: needs.build.outputs.is-snapshot == 'true'
+environment: development
+steps:
+- uses: actions/checkout@v4
+
+- name: Configure Kubernetes
+run: echo "${{ secrets.KUBECONFIG_CONTENT }}" | Out-File -FilePath kubeconfig.yaml -Encoding utf8
+
+- name: Deploy to Rancher with Helm
+env:
+VERSION: ${{ needs.build.outputs.version }}
+IMAGE: "${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}"
+run: |
+$IMAGE_LOWER = $env:IMAGE.ToLower()
+$FULL_IMAGE = "${IMAGE_LOWER}:$($env:VERSION)"
+Write-Host "Deploying snapshot image to development: $FULL_IMAGE"
+
+$helmCmd = "C:\actions-runner\tools\helm.exe"
+if (!(Test-Path $helmCmd)) {
+$helmCmd = "helm"
+}
+
+& $helmCmd upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
+--namespace azuredeploytest `
+--create-namespace `
+--set image.repository=$IMAGE_LOWER `
+--set image.tag=$env:VERSION `
+--values ./src/hello-java-chart/values/dev.yaml `
+--kubeconfig kubeconfig.yaml `
+--wait --timeout 5m
+
+build-release:
+name: Build Release Documentation
+runs-on: ubuntu-latest
+needs: build
+if: needs.build.outputs.is-snapshot == 'false'
+steps:
+- uses: actions/checkout@v4
+
+- name: Download artifact
+uses: actions/download-artifact@v4
+with:
+name: java-app-${{ github.run_number }}
+path: target
+
+- name: Setup Pages
+uses: actions/configure-pages@v4
+
+- name: Build documentation
+env:
+VERSION: ${{ needs.build.outputs.version }}
+BUILD_NUMBER: ${{ github.run_number }}
+COMMIT_SHA: ${{ github.sha }}
+ACTOR: ${{ github.actor }}
+REPOSITORY: ${{ github.repository }}
+RUN_ID: ${{ github.run_id }}
+run: |
+chmod +x docs/build-docs.sh
+./docs/build-docs.sh
+
+- name: Upload Pages artifact
+uses: actions/upload-pages-artifact@v3
+
+deploy-pages:
+name: Deploy to GitHub Pages
+runs-on: ubuntu-latest
+needs: build-release
+if: needs.build.outputs.is-snapshot == 'false'
+environment:
+name: github-pages
+url: ${{ steps.deployment.outputs.page_url }}
+steps:
+- name: Deploy to GitHub Pages
+id: deployment
+uses: actions/deploy-pages@v4
+
+create-release:
+name: Create GitHub Release
+runs-on: ubuntu-latest
+needs: [build, build-release]
+if: needs.build.outputs.is-snapshot == 'false'
+steps:
+- uses: actions/checkout@v4
+
+- name: Download artifact
+uses: actions/download-artifact@v4
+with:
+name: java-app-${{ github.run_number }}
+path: target
+
+- name: Create Release
+env:
+VERSION: ${{ needs.build.outputs.version }}
+GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+run: |
+gh release create "v$VERSION" \
+--title "Release $VERSION" \
+--notes "🚀 **Release $VERSION**
+
+## 📦 What's Included
+- ✅ JAR artifact: \`target/hello-java-app.jar\`
+- ✅ Documentation: [GitHub Pages](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)
+
+## 🔗 Links
+- 📁 [Source Code](https://github.com/${{ github.repository }})
+- ⚙️ [Build Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+- 📚 [Full Documentation](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)
+
+Built from commit: \`${{ github.sha }}\`" \
+target/*.jar
