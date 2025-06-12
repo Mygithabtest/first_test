@@ -2,7 +2,7 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop, feature/* ]
+    branches: [ main, develop, github-pipeline, feature/* ]
   workflow_dispatch:
 
 permissions:
@@ -85,10 +85,41 @@ jobs:
           docker build -t $IMAGE .
           docker push $IMAGE
 
+  docker-scout:
+    name: Docker Scout Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: docker
+    if: needs.build.outputs.is-snapshot == 'true'
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Docker Scout CLI
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Run Docker Scout quickview scan
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
+          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          echo "Scanning image with Docker Scout: $IMAGE"
+          docker scout quickview $IMAGE \
+            --only-severities critical,high \
+            --exit-code
+
   deploy-development:
     name: Deploy to Development
     runs-on: [self-hosted, Windows, X64]
-    needs: [build, docker]
+    needs: [build, docker, docker-scout]
     if: needs.build.outputs.is-snapshot == 'true'
     environment: development
     steps:
@@ -137,7 +168,7 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Prepare release documentation
+      - name: Build documentation
         env:
           VERSION: ${{ needs.build.outputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}
@@ -146,20 +177,8 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          # Copy docs folder to _site
-          cp -r docs/ _site/
-          
-          # Replace placeholders in HTML files with actual values
-          find _site -name "*.html" -type f -exec sed -i "s/{{VERSION}}/$VERSION/g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s/{{BUILD_NUMBER}}/$BUILD_NUMBER/g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s/{{COMMIT_SHA}}/$COMMIT_SHA/g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s/{{ACTOR}}/$ACTOR/g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s|{{REPOSITORY}}|$REPOSITORY|g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s/{{RUN_ID}}/$RUN_ID/g" {} \;
-          find _site -name "*.html" -type f -exec sed -i "s/{{TIMESTAMP}}/$(date -u +"%Y-%m-%d %H:%M:%S UTC")/g" {} \;
-          
-          echo "Documentation prepared for version $VERSION"
-          ls -la _site/
+          chmod +x docs/build-docs.sh
+          ./docs/build-docs.sh
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -194,13 +213,8 @@ jobs:
       - name: Create Release
         env:
           VERSION: ${{ needs.build.outputs.version }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # Create git tag
-          git tag "v$VERSION"
-          git push origin "v$VERSION"
-          
-          # Create GitHub release
           gh release create "v$VERSION" \
             --title "Release $VERSION" \
             --notes "🚀 **Release $VERSION**
@@ -208,7 +222,6 @@ jobs:
           ## 📦 What's Included
           - ✅ JAR artifact: \`target/hello-java-app.jar\`
           - ✅ Documentation: [GitHub Pages](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)
-          - ✅ Container: \`ghcr.io/${{ github.repository_owner }}/hello-github-test:$VERSION\`
 
           ## 🔗 Links
           - 📁 [Source Code](https://github.com/${{ github.repository }})
