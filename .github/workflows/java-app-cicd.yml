@@ -112,8 +112,8 @@ jobs:
           IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
           echo "Scanning image: $IMAGE"
           
-          # Create files first to ensure they exist
-          touch scout-report.sarif security-summary.txt
+          # Create summary file
+          touch security-summary.txt
           
           # Generate human-readable summary
           echo "## 🔍 Security Scan Summary" >> $GITHUB_STEP_SUMMARY
@@ -123,16 +123,36 @@ jobs:
           # Generate table format and capture output
           docker scout cves --severity critical,high --format table $IMAGE > security-summary.txt 2>&1 || true
           
-          # Generate SARIF report for GitHub Security tab
-          docker scout cves --severity critical,high --format sarif --output scout-report.sarif $IMAGE 2>/dev/null || echo '{"version": "2.1.0", "runs": []}' > scout-report.sarif
+          # Try to generate SARIF report and check if it's valid
+          SARIF_GENERATED=false
+          if docker scout cves --severity critical,high --format sarif --output scout-report.sarif $IMAGE 2>/dev/null; then
+            # Check if SARIF file has actual content (more than just empty structure)
+            if [ -s scout-report.sarif ] && grep -q '"results"' scout-report.sarif 2>/dev/null; then
+              echo "Valid SARIF file generated with vulnerabilities"
+              SARIF_GENERATED=true
+            else
+              echo "No vulnerabilities found - SARIF file empty or minimal"
+              rm -f scout-report.sarif
+            fi
+          else
+            echo "SARIF generation failed"
+          fi
+          
+          # Set environment variable for conditional upload
+          echo "SARIF_GENERATED=$SARIF_GENERATED" >> $GITHUB_ENV
           
           # Add summary to GitHub step summary
           echo '```' >> $GITHUB_STEP_SUMMARY
           head -50 security-summary.txt >> $GITHUB_STEP_SUMMARY || echo "No vulnerabilities found or scan failed" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          
+          # Create minimal SARIF for artifact upload if none exists
+          if [ ! -f scout-report.sarif ]; then
+            echo '{"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "Docker Scout"}}, "results": []}]}' > scout-report.sarif
+          fi
 
       - name: Upload SARIF to GitHub Security tab
-        if: always()
+        if: env.SARIF_GENERATED == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: scout-report.sarif
@@ -244,8 +264,8 @@ jobs:
           IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
           echo "Scanning release image: $IMAGE"
           
-          # Create files first to ensure they exist
-          touch scout-report.sarif security-summary.txt
+          # Create summary file
+          touch security-summary.txt
           
           # Generate human-readable summary
           echo "## 🔍 Security Scan Summary (Release)" >> $GITHUB_STEP_SUMMARY
@@ -255,16 +275,36 @@ jobs:
           # Generate table format and capture output
           docker scout cves --severity critical,high --format table $IMAGE > security-summary.txt 2>&1 || true
           
-          # Generate SARIF report for GitHub Security tab
-          docker scout cves --severity critical,high --format sarif --output scout-report.sarif $IMAGE 2>/dev/null || echo '{"version": "2.1.0", "runs": []}' > scout-report.sarif
+          # Try to generate SARIF report and check if it's valid
+          SARIF_GENERATED=false
+          if docker scout cves --severity critical,high --format sarif --output scout-report.sarif $IMAGE 2>/dev/null; then
+            # Check if SARIF file has actual content (more than just empty structure)
+            if [ -s scout-report.sarif ] && grep -q '"results"' scout-report.sarif 2>/dev/null; then
+              echo "Valid SARIF file generated with vulnerabilities"
+              SARIF_GENERATED=true
+            else
+              echo "No vulnerabilities found - SARIF file empty or minimal"
+              rm -f scout-report.sarif
+            fi
+          else
+            echo "SARIF generation failed"
+          fi
+          
+          # Set environment variable for conditional upload
+          echo "SARIF_GENERATED=$SARIF_GENERATED" >> $GITHUB_ENV
           
           # Add summary to GitHub step summary
           echo '```' >> $GITHUB_STEP_SUMMARY
           head -50 security-summary.txt >> $GITHUB_STEP_SUMMARY || echo "No vulnerabilities found or scan failed" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          
+          # Create minimal SARIF for artifact upload if none exists
+          if [ ! -f scout-report.sarif ]; then
+            echo '{"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "Docker Scout"}}, "results": []}]}' > scout-report.sarif
+          fi
 
       - name: Upload SARIF to GitHub Security tab
-        if: always()
+        if: env.SARIF_GENERATED == 'true'
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: scout-report.sarif
