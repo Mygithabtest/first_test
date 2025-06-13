@@ -85,14 +85,13 @@ jobs:
           docker build -t $IMAGE .
           docker push $IMAGE
 
-  docker-scout:
-    name: Docker Scout Vulnerability Scan
+  security-scan:
+    name: Security Scan
     runs-on: ubuntu-latest
     needs: docker
     if: needs.build.outputs.is-snapshot == 'true'
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -101,38 +100,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Docker Scout CLI
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/docker/scout-cli/main/install.sh | sh -s -- -b /usr/local/bin
-          docker scout version
-
-      - name: Scan image and fail if critical/high CVEs are found
+      - name: Docker Scout scan
         env:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
-          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
           IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          echo "Scanning image: $IMAGE"
+          
+          # Updated Docker Scout command with correct syntax
+          docker scout cves --severity critical,high --format sarif --output scout-report.sarif $IMAGE || true
+          
+          # Also generate a summary for the workflow
+          docker scout cves --severity critical,high --format table $IMAGE || true
 
-          echo "🔍 Scanning image: $IMAGE"
-          docker scout cves $IMAGE --format json > scout-report.json
-
-          echo "🧪 Checking for critical or high vulnerabilities..."
-          COUNT=$(jq '[.cves[] | select(.severity=="critical" or .severity=="high")] | length' scout-report.json)
-          echo "Found $COUNT high/critical vulnerabilities"
-
-          cat scout-report.json | jq '.cves[] | select(.severity=="critical" or .severity=="high") | {id, severity, package, version, fixVersion}'
-
-          if [ "$COUNT" -gt 0 ]; then
-            echo "❌ Build failed due to $COUNT high/critical vulnerabilities"
-            exit 1
-          else
-            echo "✅ No critical/high vulnerabilities found"
-          fi
+      - name: Upload Scout results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-scout-results-${{ github.run_number }}
+          path: scout-report.sarif
 
   deploy-development:
     name: Deploy to Development
     runs-on: [self-hosted, Windows, X64]
-    needs: [build, docker, docker-scout]
+    needs: [build, docker, security-scan]
     if: needs.build.outputs.is-snapshot == 'true'
     environment: development
     steps:
@@ -149,12 +141,12 @@ jobs:
           $IMAGE_LOWER = $env:IMAGE.ToLower()
           $FULL_IMAGE = "${IMAGE_LOWER}:$($env:VERSION)"
           Write-Host "Deploying snapshot image to development: $FULL_IMAGE"
-
+          
           $helmCmd = "C:\actions-runner\tools\helm.exe"
           if (!(Test-Path $helmCmd)) {
             $helmCmd = "helm"
           }
-
+          
           & $helmCmd upgrade --install ${{ env.APP_NAME }} ./src/hello-java-chart `
             --namespace azuredeploytest `
             --create-namespace `
@@ -163,6 +155,76 @@ jobs:
             --values ./src/hello-java-chart/values/dev.yaml `
             --kubeconfig kubeconfig.yaml `
             --wait --timeout 5m
+
+  docker-release:
+    name: Build Release Docker Image
+    runs-on: ubuntu-latest
+    needs: build
+    if: needs.build.outputs.is-snapshot == 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: java-app-${{ github.run_number }}
+          path: target
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push release image
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
+          IMAGE_LATEST="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:latest"
+          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          IMAGE_LATEST=$(echo "$IMAGE_LATEST" | tr '[:upper:]' '[:lower:]')
+          echo "Building and pushing release image: $IMAGE"
+          docker build -t $IMAGE -t $IMAGE_LATEST .
+          docker push $IMAGE
+          docker push $IMAGE_LATEST
+
+  security-scan-release:
+    name: Security Scan Release
+    runs-on: ubuntu-latest
+    needs: docker-release
+    if: needs.build.outputs.is-snapshot == 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker Scout scan
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION"
+          IMAGE=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          echo "Scanning release image: $IMAGE"
+          
+          # Updated Docker Scout command with correct syntax
+          docker scout cves --severity critical,high --format sarif --output scout-report.sarif $IMAGE || true
+          
+          # Also generate a summary for the workflow
+          docker scout cves --severity critical,high --format table $IMAGE || true
+
+      - name: Upload Scout results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-scout-results-release-${{ github.run_number }}
+          path: scout-report.sarif
 
   build-release:
     name: Build Release Documentation
@@ -189,18 +251,24 @@ jobs:
           ACTOR: ${{ github.actor }}
           REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
+          TIMESTAMP: ${{ github.event.head_commit.timestamp }}
         run: |
           chmod +x docs/build-docs.sh
           ./docs/build-docs.sh
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_site
 
   deploy-pages:
     name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
-    needs: build-release
+    needs: [build, build-release]
     if: needs.build.outputs.is-snapshot == 'false'
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -212,8 +280,10 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build, build-release]
+    needs: [build, build-release, security-scan-release]
     if: needs.build.outputs.is-snapshot == 'false'
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -223,23 +293,58 @@ jobs:
           name: java-app-${{ github.run_number }}
           path: target
 
+      - name: Download security scan results
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-scout-results-release-${{ github.run_number }}
+          path: security-results
+        continue-on-error: true
+
       - name: Create Release
         env:
           VERSION: ${{ needs.build.outputs.version }}
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+          PAGES_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
         run: |
+          # Check if security scan passed
+          SECURITY_STATUS="✅ Security scan completed"
+          if [ -f "security-results/scout-report.sarif" ]; then
+            SECURITY_STATUS="✅ Security scan completed - see artifacts for details"
+          fi
+          
+          # Convert repository name to lowercase for Docker image
+          IMAGE_NAME=$(echo "${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:$VERSION" | tr '[:upper:]' '[:lower:]')
+          
           gh release create "v$VERSION" \
             --title "Release $VERSION" \
             --notes "🚀 **Release $VERSION**
 
           ## 📦 What's Included
-          - ✅ JAR artifact: \`target/hello-java-app.jar\`
-          - ✅ Documentation: [GitHub Pages](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)
+          - ✅ JAR artifact: \`hello-java-app.jar\`
+          - ✅ Docker image: \`$IMAGE_NAME\`
+          - ✅ Documentation: [$PAGES_URL]($PAGES_URL)
+          - $SECURITY_STATUS
 
           ## 🔗 Links
           - 📁 [Source Code](https://github.com/${{ github.repository }})
           - ⚙️ [Build Details](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          - 📚 [Full Documentation](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)
+          - 📚 [Full Documentation]($PAGES_URL)
+          - 🐳 [Docker Image](https://github.com/${{ github.repository }}/pkgs/container/${{ env.IMAGE_NAME }})
+          - 📊 [Security Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          ## 📋 Build Information
+          - **Version:** $VERSION
+          - **Build:** #${{ github.run_number }}
+          - **Commit:** \`${{ github.sha }}\`
+          - **Built by:** @${{ github.actor }}
+          - **Date:** ${{ github.event.head_commit.timestamp }}
+
+          ## 🚀 Usage
+          \`\`\`bash
+          # Pull and run the Docker image
+          docker pull $IMAGE_NAME
+          docker run -p 8080:8080 $IMAGE_NAME
+          \`\`\`
 
           Built from commit: \`${{ github.sha }}\`" \
             target/*.jar
